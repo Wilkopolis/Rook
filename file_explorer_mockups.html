@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" type="image/png" href="./public/chess_rook.png" />
+  <title>Crush Explorer — UI Mockup</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
+  <style>
+    :root {
+      --background: #0b0f19;
+      --sidebar: #111827;
+      --card: #161f33;
+      --border: #26334d;
+      --foreground: #f1f5f9;
+      --muted-foreground: #94a3b8;
+      --primary: #6366f1;
+      --primary-foreground: #ffffff;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, sans-serif;
+    }
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    .k-icon { width: 15px; height: 15px; object-fit: contain; display: inline-block; flex-shrink: 0; }
+    .k-icon-lg { width: 22px; height: 22px; object-fit: contain; display: inline-block; flex-shrink: 0; }
+  </style>
+</head>
+<body class="bg-[var(--background)] text-[var(--foreground)] antialiased p-4 h-screen flex flex-col overflow-hidden">
+
+  <!-- Unified Application Frame -->
+  <main class="bg-[var(--card)] border border-[var(--border)] rounded-xl shadow-xl overflow-hidden flex flex-col flex-1">
+    
+    <!-- ROW 1 (TOP): COMMAND RIBBON -->
+    <div class="bg-[var(--sidebar)] border-b border-[var(--border)] px-3 py-2 flex flex-wrap items-center justify-between gap-2 text-xs select-none">
+      <!-- Left: App Icon (chess_rook.png) + File Command Buttons -->
+      <div class="flex flex-wrap items-center gap-1.5">
+        <div class="flex items-center gap-2 pr-2.5 mr-1 border-r border-[var(--border)]">
+          <img src="./public/icons/chess_rook.png" class="w-5 h-5 object-contain" alt="Crush" />
+          <span class="font-semibold text-[var(--foreground)] tracking-tight">Crush</span>
+        </div>
+
+        <button class="px-2.5 py-1.5 rounded-md bg-[var(--primary)] text-[var(--primary-foreground)] font-medium hover:opacity-90 flex items-center gap-1.5">
+          <img src="./public/icons/pouch_add.png" class="k-icon" alt="" />
+          <span>New Folder</span>
+        </button>
+        <button class="px-2.5 py-1.5 rounded-md bg-[var(--card)] border border-[var(--border)] text-[var(--foreground)] hover:border-[var(--primary)] flex items-center gap-1.5">
+          <img src="./public/icons/card_add.png" class="k-icon" alt="" />
+          <span>New File</span>
+        </button>
+
+        <div class="h-4 w-px bg-[var(--border)] mx-0.5"></div>
+
+        <button class="px-2.5 py-1.5 rounded-md bg-[var(--card)] border border-[var(--border)] text-[var(--foreground)] hover:border-[var(--primary)] flex items-center gap-1.5">
+          <img src="./public/icons/cards_flip.png" class="k-icon" alt="" />
+          <span>Copy → Pane</span>
+        </button>
+        <button class="px-2.5 py-1.5 rounded-md bg-[var(--card)] border border-[var(--border)] text-[var(--foreground)] hover:border-[var(--primary)] flex items-center gap-1.5">
+          <img src="./public/icons/card_place.png" class="k-icon" alt="" />
+          <span>Move → Pane</span>
+        </button>
+        <button class="px-2.5 py-1.5 rounded-md bg-[var(--card)] border border-[var(--border)] text-[var(--foreground)] hover:border-[var(--primary)] flex items-center gap-1.5">
+          <img src="./public/icons/notepad_write.png" class="k-icon" alt="" />
+          <span>Rename</span>
+        </button>
+        <button class="px-2.5 py-1.5 rounded-md bg-[var(--card)] border border-[var(--border)] text-red-400 hover:border-red-400 flex items-center gap-1.5">
+          <img src="./public/icons/skull.png" class="k-icon" alt="" />
+          <span>Delete</span>
+        </button>
+      </div>
+
+      <!-- Right: 5-Layout Switcher + Sort + Dockable Panes -->
+      <div class="flex flex-wrap items-center gap-2">
+        <div class="flex items-center bg-[var(--background)] p-1 rounded-lg border border-[var(--border)] gap-0.5">
+          <button onclick="setLayout('workspace')" data-layout="workspace" class="layout-btn px-2.5 py-1 rounded-md text-xs font-medium transition-all flex items-center gap-1.5 bg-[var(--primary)] text-[var(--primary-foreground)]">
+            <img src="./public/icons/structure_house.png" class="k-icon" alt="" /><span>Workspace</span><span class="opacity-70">1</span>
+          </button>
+          <button onclick="setLayout('miller')" data-layout="miller" class="layout-btn px-2.5 py-1 rounded-md text-xs font-medium transition-all flex items-center gap-1.5 text-[var(--muted-foreground)] hover:text-[var(--foreground)]">
+            <img src="./public/icons/cards_order.png" class="k-icon" alt="" /><span>Miller</span><span class="opacity-60">2</span>
+          </button>
+          <button onclick="setLayout('dualpane')" data-layout="dualpane" class="layout-btn px-2.5 py-1 rounded-md text-xs font-medium transition-all flex items-center gap-1.5 text-[var(--muted-foreground)] hover:text-[var(--foreground)]">
+            <img src="./public/icons/cards_flip.png" class="k-icon" alt="" /><span>Dual-Pane</span><span class="opacity-60">3</span>
+          </button>
+          <button onclick="setLayout('faceted')" data-layout="faceted" class="layout-btn px-2.5 py-1 rounded-md text-xs font-medium transition-all flex items-center gap-1.5 text-[var(--muted-foreground)] hover:text-[var(--foreground)]">
+            <img src="./public/icons/tag_shield.png" class="k-icon" alt="" /><span>Tags</span><span class="opacity-60">4</span>
+          </button>
+          <button onclick="setLayout('command')" data-layout="command" class="layout-btn px-2.5 py-1 rounded-md text-xs font-medium transition-all flex items-center gap-1.5 text-[var(--muted-foreground)] hover:text-[var(--foreground)]">
+            <img src="./public/icons/cards_seek.png" class="k-icon" alt="" /><span>Fuzzy</span><span class="opacity-60">5</span>
+          </button>
+        </div>
+
+        <label class="flex items-center gap-1.5 text-[var(--muted-foreground)] bg-[var(--background)] border border-[var(--border)] rounded-lg px-2.5 py-1">
+          <img src="./public/icons/cards_shuffle.png" class="k-icon" alt="" />
+          <span>Sort:</span>
+          <select onchange="handleSort(this.value)" class="bg-transparent text-[var(--foreground)] text-xs outline-none">
+            <option value="name">Name</option>
+            <option value="modified">Modified</option>
+            <option value="size">Size</option>
+          </select>
+        </label>
+
+        <div class="flex items-center gap-1">
+          <button onclick="toggleSidebar()" id="sidebar-toggle-btn" class="px-2.5 py-1.5 rounded-lg border border-[var(--border)] bg-[var(--primary)]/20 text-[var(--foreground)] font-medium flex items-center gap-1.5">
+            <img src="./public/icons/book_open.png" class="k-icon" alt="" /><span>Sidebar</span>
+          </button>
+          <button onclick="toggleInspector()" id="inspector-toggle-btn" class="px-2.5 py-1.5 rounded-lg border border-[var(--border)] bg-[var(--primary)]/20 text-[var(--foreground)] font-medium flex items-center gap-1.5">
+            <img src="./public/icons/flask_full.png" class="k-icon" alt="" /><span>Inspector</span>
+          </button>
+          <button onclick="toggleTerminal()" id="terminal-toggle-btn" class="px-2.5 py-1.5 rounded-lg border border-[var(--border)] bg-[var(--background)] text-[var(--muted-foreground)] flex items-center gap-1.5">
+            <img src="./public/icons/campfire.png" class="k-icon" alt="" /><span>Terminal</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ROW 2 (BELOW RIBBON, ABOVE TABS): NAVIGATION UI ELEMENT -->
+    <div class="border-b border-[var(--border)] bg-[var(--card)] px-3 py-2 flex items-center justify-between gap-2 text-xs select-none">
+      <div class="flex items-center gap-1">
+        <button class="p-1.5 rounded-md bg-[var(--background)] border border-[var(--border)] hover:border-[var(--primary)]"><img src="./public/icons/pawn_left.png" class="k-icon" alt="Back" /></button>
+        <button class="p-1.5 rounded-md bg-[var(--background)] border border-[var(--border)] hover:border-[var(--primary)]"><img src="./public/icons/pawn_right.png" class="k-icon" alt="Forward" /></button>
+        <button class="p-1.5 rounded-md bg-[var(--background)] border border-[var(--border)] hover:border-[var(--primary)]"><img src="./public/icons/pawn_up.png" class="k-icon" alt="Up" /></button>
+        <button class="p-1.5 rounded-md bg-[var(--background)] border border-[var(--border)] hover:border-[var(--primary)]"><img src="./public/icons/arrow_rotate.png" class="k-icon" alt="Refresh" /></button>
+      </div>
+
+      <div class="flex-1 flex items-center gap-2 bg-[var(--background)] border border-[var(--border)] rounded-lg px-3 py-1.5">
+        <img src="./public/icons/structure_watchtower.png" class="k-icon" alt="" />
+        <span class="text-[var(--muted-foreground)] hover:text-[var(--foreground)] cursor-pointer">Projects</span>
+        <span class="text-[var(--muted-foreground)]">/</span>
+        <span class="text-[var(--muted-foreground)] hover:text-[var(--foreground)] cursor-pointer">crush-engine</span>
+        <span class="text-[var(--muted-foreground)]">/</span>
+        <span class="font-semibold text-[var(--foreground)]">src</span>
+        <div class="ml-auto flex items-center gap-1.5 border-l border-[var(--border)] pl-2.5">
+          <img src="./public/icons/cards_seek.png" class="k-icon" alt="" />
+          <input oninput="handleFilter(this.value)" type="text" placeholder="Filter view..." class="bg-transparent text-xs text-[var(--foreground)] outline-none w-36 placeholder:text-[var(--muted-foreground)]" />
+        </div>
+      </div>
+
+      <div class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-[var(--border)] bg-[var(--background)]">
+        <img src="./public/icons/shield.png" class="k-icon" alt="" />
+        <span class="text-[var(--muted-foreground)]">Git:</span>
+        <strong class="text-emerald-500">main*</strong>
+      </div>
+    </div>
+
+    <!-- ROW 3 (BELOW NAVIGATION): TABS BAR -->
+    <div class="bg-[var(--sidebar)] border-b border-[var(--border)] px-3 py-1.5 flex items-center gap-1.5 overflow-x-auto no-scrollbar text-xs select-none">
+      <div class="bg-[var(--card)] text-[var(--foreground)] border border-[var(--border)] px-3 py-1 rounded-md flex items-center gap-2 font-medium shadow-sm cursor-pointer">
+        <img src="./public/icons/pouch.png" class="k-icon" alt="" />
+        <span>crush-engine / src</span>
+        <span class="text-[var(--muted-foreground)] hover:text-[var(--foreground)]">×</span>
+      </div>
+      <div class="text-[var(--muted-foreground)] hover:bg-[var(--card)]/50 px-3 py-1 rounded-md flex items-center gap-2 cursor-pointer">
+        <img src="./public/icons/book_closed.png" class="k-icon" alt="" />
+        <span>design-tokens</span>
+      </div>
+      <div class="text-[var(--muted-foreground)] hover:bg-[var(--card)]/50 px-3 py-1 rounded-md flex items-center gap-2 cursor-pointer">
+        <img src="./public/icons/book_closed.png" class="k-icon" alt="" />
+        <span>Downloads (14)</span>
+      </div>
+      <button class="px-2 py-1 text-[var(--muted-foreground)] hover:text-[var(--foreground)] rounded">
+        <img src="./public/icons/token_add.png" class="k-icon" alt="+" />
+      </button>
+    </div>
+
+    <!-- DYNAMIC VIEWPORT CONTAINER -->
+    <div id="viewport" class="flex-1 flex overflow-hidden"></div>
+
+    <!-- Optional Integrated Terminal Drawer -->
+    <div id="terminal-drawer" class="hidden border-t border-[var(--border)] bg-[var(--background)] p-3 font-mono text-xs h-36 flex flex-col justify-between shrink-0">
+      <div class="flex items-center justify-between text-[var(--muted-foreground)] border-b border-[var(--border)] pb-1.5 mb-2">
+        <span>INTEGRATED SHELL — pwsh (synced to ~/Projects/crush-engine/src)</span>
+        <button onclick="toggleTerminal()" class="hover:text-[var(--foreground)]">✕</button>
+      </div>
+      <div class="space-y-1 overflow-y-auto flex-1 text-[var(--foreground)]">
+        <div><span class="text-emerald-500">~/Projects/crush-engine/src</span> <span class="text-sky-400">(main*)</span> &gt; cargo check --workspace</div>
+        <div class="text-[var(--muted-foreground)]">    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.42s</div>
+        <div><span class="text-emerald-500">~/Projects/crush-engine/src</span> <span class="text-sky-400">(main*)</span> &gt; <span class="animate-pulse">▋</span></div>
+      </div>
+    </div>
+
+    <!-- Status Bar -->
+    <footer class="bg-[var(--sidebar)] border-t border-[var(--border)] px-3 py-1.5 flex items-center justify-between text-xs text-[var(--muted-foreground)] select-none shrink-0">
+      <div class="flex items-center gap-4">
+        <span id="status-count">8 items (1 selected)</span>
+        <span>•</span>
+        <span>Free space: 412.8 GB NVMe</span>
+      </div>
+      <div class="flex items-center gap-3">
+        <span>Alt+1..5 Switch Layout</span>
+        <span>•</span>
+        <span>Space QuickLook</span>
+      </div>
+    </footer>
+  </main>
+
+  <script>
+    const filesData = [
+      { id: 1, name: 'components', type: 'folder', sizeBytes: 0, size: '--', modified: '10 mins ago', git: 'M', tags: ['ui', 'core'], icon: 'pouch.png', children: ['Sidebar.tsx', 'RibbonBar.tsx', 'FileGrid.tsx', 'PreviewPane.tsx'] },
+      { id: 2, name: 'fs_indexer', type: 'folder', sizeBytes: 0, size: '--', modified: '2 hours ago', git: 'Clean', tags: ['rust', 'perf'], icon: 'pouch.png', children: ['scanner.rs', 'mft_reader.rs', 'watcher.rs'] },
+      { id: 3, name: 'themes', type: 'folder', sizeBytes: 0, size: '--', modified: 'Yesterday', git: 'Clean', tags: ['ui'], icon: 'pouch.png', children: ['dark.json', 'catppuccin.json', 'solarized.json'] },
+      { id: 4, name: 'main.rs', type: 'Rust Source', sizeBytes: 14540, size: '14.2 KB', modified: '4 mins ago', git: 'M', tags: ['rust', 'core'], icon: 'resource_iron.png', preview: 'fn main() -> Result<()> {\n    let app = CrushExplorer::init()?;\n    app.mount_virtual_fs("/projects");\n    app.run_event_loop()\n}' },
+      { id: 5, name: 'keymap.toml', type: 'TOML Config', sizeBytes: 4915, size: '4.8 KB', modified: 'Yesterday', git: 'Clean', tags: ['config'], icon: 'puzzle.png', preview: '[normal_mode]\n"Alt+1" = "layout_workspace"\n"Alt+2" = "layout_miller"\n"Alt+3" = "layout_dualpane"\n"Alt+4" = "layout_tags"\n"Alt+5" = "layout_fuzzy"' },
+      { id: 6, name: 'architecture.svg', type: 'Vector Image', sizeBytes: 49254, size: '48.1 KB', modified: '3 days ago', git: 'U', tags: ['docs', 'ui'], icon: 'award.png', preview: '[Vector Diagram: Virtual File System -> Async Indexer -> Unified 5-Layout Renderer]' },
+      { id: 7, name: 'Cargo.toml', type: 'Crate Manifest', sizeBytes: 1945, size: '1.9 KB', modified: '5 days ago', git: 'Clean', tags: ['rust', 'config'], icon: 'tokens_stack.png', preview: '[package]\nname = "crush-explorer"\nversion = "0.4.0"\nedition = "2024"' },
+      { id: 8, name: 'BENCHMARKS.md', type: 'Markdown', sizeBytes: 8601, size: '8.4 KB', modified: '1 week ago', git: 'Clean', tags: ['docs', 'perf'], icon: 'notepad.png', preview: '# Directory Traversal Speed\n- 100k files cold cache: 38ms\n- Warm cache fuzzy query: 1.2ms' }
+    ];
+
+    let currentLayout = 'workspace';
+    let selectedFileId = 4;
+    let showSidebar = true;
+    let showInspector = true;
+    let activeTagFilter = 'all';
+    let filterQuery = '';
+    let sortBy = 'name';
+
+    function getFilteredFiles() {
+      let list = [...filesData];
+      if (filterQuery.trim() !== '') {
+        const q = filterQuery.toLowerCase();
+        list = list.filter(f => f.name.toLowerCase().includes(q) || f.tags.some(t => t.includes(q)));
+      }
+      if (currentLayout === 'faceted' && activeTagFilter !== 'all') {
+        list = list.filter(f => f.tags.includes(activeTagFilter));
+      }
+      return list;
+    }
+
+    function getSelectedFile() {
+      return filesData.find(f => f.id === selectedFileId) || filesData[0];
+    }
+
+    function selectFile(id) {
+      selectedFileId = id;
+      renderViewport();
+    }
+
+    function handleFilter(val) {
+      filterQuery = val;
+      renderViewport();
+    }
+
+    function handleSort(val) {
+      sortBy = val;
+      renderViewport();
+    }
+
+    function setTagFilter(tag) {
+      activeTagFilter = tag;
+      renderViewport();
+    }
+
+    function toggleSidebar() {
+      showSidebar = !showSidebar;
+      renderViewport();
+    }
+
+    function toggleInspector() {
+      showInspector = !showInspector;
+      renderViewport();
+    }
+
+    function toggleTerminal() {
+      document.getElementById('terminal-drawer').classList.toggle('hidden');
+    }
+
+    function setLayout(layout) {
+      currentLayout = layout;
+      document.querySelectorAll('.layout-btn').forEach(btn => {
+        if (btn.dataset.layout === layout) {
+          btn.className = 'layout-btn px-2.5 py-1 rounded-md text-xs font-medium transition-all flex items-center gap-1.5 bg-[var(--primary)] text-[var(--primary-foreground)]';
+        } else {
+          btn.className = 'layout-btn px-2.5 py-1 rounded-md text-xs font-medium transition-all flex items-center gap-1.5 text-[var(--muted-foreground)] hover:text-[var(--foreground)]';
+        }
+      });
+      renderViewport();
+    }
+
+    function renderSidebarPane() {
+      if (!showSidebar) return '';
+      return `
+        <aside class="w-52 border-r border-[var(--border)] bg-[var(--sidebar)] p-3 flex flex-col justify-between text-xs select-none shrink-0">
+          <div class="space-y-4">
+            <div>
+              <div class="text-[var(--muted-foreground)] font-semibold uppercase tracking-wider px-2 mb-1.5">Pinned Workspaces</div>
+              <div class="space-y-0.5">
+                <div class="px-2 py-1.5 rounded-md bg-[var(--card)] text-[var(--foreground)] font-medium border border-[var(--border)] flex items-center gap-2">
+                  <img src="./public/icons/chess_rook.png" class="k-icon" alt="" />
+                  <span>crush-engine</span>
+                </div>
+                <div class="px-2 py-1.5 rounded-md text-[var(--muted-foreground)] hover:bg-[var(--card)]/50 flex items-center gap-2 cursor-pointer">
+                  <img src="./public/icons/structure_house.png" class="k-icon" alt="" />
+                  <span>Home Directory</span>
+                </div>
+                <div class="px-2 py-1.5 rounded-md text-[var(--muted-foreground)] hover:bg-[var(--card)]/50 flex items-center gap-2 cursor-pointer">
+                  <img src="./public/icons/structure_tower.png" class="k-icon" alt="" />
+                  <span>Local Disk (C:)</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </aside>
+      `;
+    }
+
+    function renderInspectorPane(file) {
+      if (!showInspector) return '';
+      return `
+        <aside class="w-72 border-l border-[var(--border)] bg-[var(--sidebar)] p-4 flex flex-col justify-between overflow-y-auto shrink-0">
+          <div class="space-y-4">
+            <div class="flex items-center gap-3 pb-3 border-b border-[var(--border)]">
+              <div class="w-10 h-10 rounded-lg bg-[var(--card)] border border-[var(--border)] flex items-center justify-center">
+                <img src="./public/icons/${file.icon}" class="k-icon-lg" alt="" />
+              </div>
+              <div>
+                <div class="text-sm font-semibold text-[var(--foreground)]">${file.name}</div>
+                <div class="text-xs text-[var(--muted-foreground)]">${file.type} • ${file.size}</div>
+              </div>
+            </div>
+
+            <div>
+              <div class="text-xs font-semibold text-[var(--muted-foreground)] uppercase tracking-wider mb-1.5">Live QuickLook</div>
+              <pre class="bg-[var(--background)] border border-[var(--border)] rounded-lg p-3 text-xs font-mono text-[var(--foreground)] overflow-x-auto whitespace-pre-wrap">${file.preview || (file.children ? 'Folder Contents:\n• ' + file.children.join('\n• ') : 'No preview')}</pre>
+            </div>
+          </div>
+        </aside>
+      `;
+    }
+
+    function renderWorkspaceCenter(list) {
+      return `
+        <section class="flex-1 flex flex-col bg-[var(--card)] overflow-y-auto">
+          <div class="grid grid-cols-12 px-4 py-2 border-b border-[var(--border)] text-xs font-semibold text-[var(--muted-foreground)] select-none">
+            <div class="col-span-5">Name</div>
+            <div class="col-span-3">Git / Tags</div>
+            <div class="col-span-2">Modified</div>
+            <div class="col-span-2 text-right">Size</div>
+          </div>
+          <div class="divide-y divide-[var(--border)]/40 text-xs">
+            ${list.map(f => `
+              <div onclick="selectFile(${f.id})" class="grid grid-cols-12 px-4 py-2.5 items-center cursor-pointer transition-colors ${f.id === selectedFileId ? 'bg-[var(--primary)]/15 text-[var(--foreground)] font-medium' : 'hover:bg-[var(--background)]'}">
+                <div class="col-span-5 flex items-center gap-2.5">
+                  <img src="./public/icons/${f.icon}" class="k-icon" alt="" />
+                  <span>${f.name}</span>
+                </div>
+                <div class="col-span-3 flex items-center gap-1.5">
+                  ${f.tags.map(t => `<span class="px-1.5 py-0.5 rounded bg-[var(--background)] border border-[var(--border)] text-[var(--muted-foreground)]">#${t}</span>`).join('')}
+                </div>
+                <div class="col-span-2 text-[var(--muted-foreground)]">${f.modified}</div>
+                <div class="col-span-2 text-right font-mono text-[var(--muted-foreground)]">${f.size}</div>
+              </div>
+            `).join('')}
+          </div>
+        </section>
+      `;
+    }
+
+    function renderViewport() {
+      const vp = document.getElementById('viewport');
+      const file = getSelectedFile();
+      const list = getFilteredFiles();
+      document.getElementById('status-count').textContent = `${list.length} items (1 selected: ${file.name})`;
+      vp.innerHTML = `${renderSidebarPane()}${renderWorkspaceCenter(list)}${renderInspectorPane(file)}`;
+    }
+
+    renderViewport();
+  </script>
+</body>
+</html>
