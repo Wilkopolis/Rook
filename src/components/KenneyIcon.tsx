@@ -10,8 +10,10 @@ interface KenneyIconProps {
 }
 
 const ICON_TINTS: Record<string, string> = {
-  pouch: 'text-amber-300/90',
-  folder: 'text-amber-300/90',
+  pouch: 'text-amber-400',
+  folder: 'text-amber-400',
+  sublime: 'text-orange-400',
+  notepadpp: 'text-emerald-400',
   chess_rook: 'text-[#5fa8ff]',
   resource_iron: 'text-orange-400/90',
   file_ts: 'text-sky-400/90',

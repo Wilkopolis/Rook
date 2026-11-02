@@ -419,7 +419,7 @@ export const App: React.FC = () => {
   const pendingDeleteName = pendingDeletePath ? pendingDeletePath.split(/[\\/]/).pop() : '';
 
   return (
-    <div className="bg-[var(--background)] text-[var(--foreground)] h-screen w-screen flex flex-col overflow-hidden border border-[var(--border)] relative">
+    <div className="bg-[var(--sidebar)] text-[var(--foreground)] h-screen w-screen flex flex-col overflow-hidden border border-[var(--border)] relative">
       {/* 8-Way Frameless Native Window Resize Handles */}
       <div
         onMouseDown={() => fsService.winResize('top')}
@@ -467,7 +467,7 @@ export const App: React.FC = () => {
 
         <div className="flex-1 flex overflow-hidden">
           <SidebarPane />
-          <div className="flex-1 flex overflow-hidden relative z-10 bg-[var(--card)] shadow-[0_0_28px_rgba(0,0,0,0.6)] ring-1 ring-white/[0.08]">
+          <div className="flex-1 flex overflow-hidden relative z-10 bg-[var(--center-bg)] shadow-[0_0_28px_rgba(0,0,0,0.6)] ring-1 ring-white/[0.04]">
             <LayoutsView />
           </div>
           <InspectorPane />

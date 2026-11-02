@@ -183,6 +183,34 @@ export const ContextMenu: React.FC = () => {
             <span>Reveal in Windows Explorer</span>
           </button>
 
+          <button
+            onClick={() => {
+              closeContextMenu();
+              const targets = selectedPaths.length > 0 && selectedPaths.includes(entry.path)
+                ? selectedPaths
+                : [entry.path];
+              fsService.openWith('sublime', targets);
+            }}
+            className="w-full px-3 py-1.5 hover:bg-[var(--primary)]/20 flex items-center gap-2 cursor-pointer text-left"
+          >
+            <KenneyIcon name="sublime" size={14} className="text-orange-400" />
+            <span>Open with Sublime Text</span>
+          </button>
+
+          <button
+            onClick={() => {
+              closeContextMenu();
+              const targets = selectedPaths.length > 0 && selectedPaths.includes(entry.path)
+                ? selectedPaths
+                : [entry.path];
+              fsService.openWith('notepad++', targets);
+            }}
+            className="w-full px-3 py-1.5 hover:bg-[var(--primary)]/20 flex items-center gap-2 cursor-pointer text-left"
+          >
+            <KenneyIcon name="notepadpp" size={14} className="text-emerald-400" />
+            <span>Open with Notepad++</span>
+          </button>
+
           <div className="my-1 border-t border-[var(--border)]/70" />
 
           <button
@@ -419,6 +447,28 @@ export const ContextMenu: React.FC = () => {
           >
             <KenneyIcon name="zoom" size={14} />
             <span>Reveal in Windows Explorer</span>
+          </button>
+
+          <button
+            onClick={() => {
+              closeContextMenu();
+              fsService.openWith('sublime', currentPath);
+            }}
+            className="w-full px-3 py-1.5 hover:bg-[var(--primary)]/20 flex items-center gap-2 cursor-pointer text-left"
+          >
+            <KenneyIcon name="sublime" size={14} className="text-orange-400" />
+            <span>Open in Sublime Text</span>
+          </button>
+
+          <button
+            onClick={() => {
+              closeContextMenu();
+              fsService.openWith('notepad++', currentPath);
+            }}
+            className="w-full px-3 py-1.5 hover:bg-[var(--primary)]/20 flex items-center gap-2 cursor-pointer text-left"
+          >
+            <KenneyIcon name="notepadpp" size={14} className="text-emerald-400" />
+            <span>Open in Notepad++</span>
           </button>
 
           <button

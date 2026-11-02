@@ -180,6 +180,11 @@ export const fsService = {
     return postApi('openFile', { path });
   },
 
+  async openWith(app: 'sublime' | 'notepad++', paths: string[] | string): Promise<{ ok: boolean; error?: string }> {
+    const list = Array.isArray(paths) ? paths : [paths];
+    return postApi('openWith', { app, paths: list });
+  },
+
   async revealInExplorer(path: string): Promise<{ ok: boolean }> {
     return postApi('revealInExplorer', { path });
   },

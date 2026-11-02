@@ -1178,6 +1178,70 @@ public class Program
         catch { }
     }
 
+    private static string FindSublimePath()
+    {
+        try
+        {
+            using var key = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\sublime_text.exe")
+                         ?? Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\sublime_text.exe");
+            var val = key?.GetValue("") as string;
+            if (!string.IsNullOrEmpty(val) && File.Exists(val)) return val;
+        }
+        catch { }
+
+        var progFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+        var progFilesX86 = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
+        var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+
+        var candidates = new[]
+        {
+            Path.Combine(progFiles, "Sublime Text", "sublime_text.exe"),
+            Path.Combine(progFiles, "Sublime Text 3", "sublime_text.exe"),
+            Path.Combine(progFiles, "Sublime Text 4", "sublime_text.exe"),
+            Path.Combine(progFilesX86, "Sublime Text", "sublime_text.exe"),
+            Path.Combine(progFilesX86, "Sublime Text 3", "sublime_text.exe"),
+            Path.Combine(localAppData, "Programs", "Sublime Text", "sublime_text.exe"),
+            Path.Combine(localAppData, "Programs", "Sublime Text 3", "sublime_text.exe")
+        };
+
+        foreach (var c in candidates)
+        {
+            if (File.Exists(c)) return c;
+        }
+
+        return "sublime_text.exe";
+    }
+
+    private static string FindNotepadPlusPlusPath()
+    {
+        try
+        {
+            using var key = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\notepad++.exe")
+                         ?? Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\notepad++.exe");
+            var val = key?.GetValue("") as string;
+            if (!string.IsNullOrEmpty(val) && File.Exists(val)) return val;
+        }
+        catch { }
+
+        var progFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+        var progFilesX86 = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
+        var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+
+        var candidates = new[]
+        {
+            Path.Combine(progFiles, "Notepad++", "notepad++.exe"),
+            Path.Combine(progFilesX86, "Notepad++", "notepad++.exe"),
+            Path.Combine(localAppData, "Programs", "Notepad++", "notepad++.exe")
+        };
+
+        foreach (var c in candidates)
+        {
+            if (File.Exists(c)) return c;
+        }
+
+        return "notepad++.exe";
+    }
+
     [STAThread]
     public static void Main(string[] args)
     {
@@ -1834,6 +1898,74 @@ public class Program
                         UseShellExecute = true
                     });
                     return Results.Json(new { ok = true });
+                }
+
+                if (action == "openWith")
+                {
+                    var app = root.TryGetProperty("app", out var aProp) ? aProp.GetString() : "sublime";
+                    var paths = new List<string>();
+                    if (root.TryGetProperty("paths", out var pathsArr) && pathsArr.ValueKind == JsonValueKind.Array)
+                    {
+                        foreach (var el in pathsArr.EnumerateArray())
+                        {
+                            var p = el.GetString();
+                            if (!string.IsNullOrEmpty(p)) paths.Add(Path.GetFullPath(p));
+                        }
+                    }
+                    else if (root.TryGetProperty("path", out var pathSingle) && pathSingle.ValueKind == JsonValueKind.String)
+                    {
+                        var p = pathSingle.GetString();
+                        if (!string.IsNullOrEmpty(p)) paths.Add(Path.GetFullPath(p));
+                    }
+
+                    if (paths.Count == 0)
+                    {
+                        return Results.Json(new { ok = false, error = "No path specified" });
+                    }
+
+                    string exePath;
+                    string arguments;
+                    string workingDir = Directory.Exists(paths[0])
+                        ? paths[0]
+                        : Path.GetDirectoryName(paths[0]) ?? AppContext.BaseDirectory;
+
+                    if (app == "sublime")
+                    {
+                        exePath = FindSublimePath();
+                        arguments = string.Join(" ", paths.Select(p => $"\"{p}\""));
+                    }
+                    else if (app == "notepad++" || app == "notepadpp")
+                    {
+                        exePath = FindNotepadPlusPlusPath();
+                        if (paths.Count == 1 && Directory.Exists(paths[0]))
+                        {
+                            arguments = $"-openFoldersAsWorkspace \"{paths[0]}\"";
+                        }
+                        else
+                        {
+                            arguments = string.Join(" ", paths.Select(p => $"\"{p}\""));
+                        }
+                    }
+                    else
+                    {
+                        return Results.Json(new { ok = false, error = $"Unknown editor: {app}" });
+                    }
+
+                    try
+                    {
+                        Process.Start(new ProcessStartInfo
+                        {
+                            FileName = exePath,
+                            Arguments = arguments,
+                            WorkingDirectory = workingDir,
+                            UseShellExecute = true
+                        });
+                        return Results.Json(new { ok = true });
+                    }
+                    catch (Exception ex)
+                    {
+                        return Results.Json(new { ok = false, error = ex.Message });
+                    }
                 }
 
                 if (action == "gitStatus")

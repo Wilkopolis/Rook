@@ -349,32 +349,32 @@ export const RibbonHeader: React.FC = () => {
       </div>
 
       {/* ROW 2 (BELOW RIBBON, ABOVE TABS): NAVIGATION UI ELEMENT */}
-      <div className="bg-[var(--card)] border-b border-[var(--border)] px-3 py-2 flex items-center justify-between gap-2 text-xs">
+      <div className="bg-[var(--sidebar)] border-b border-[var(--border)] px-3 py-2 flex items-center justify-between gap-2 text-xs">
         <div className="flex items-center gap-1 shrink-0">
           <button
             onClick={goBack}
-            className="p-1.5 rounded-md bg-[var(--background)] hover:border-[var(--primary)] border border-[var(--border)] cursor-pointer flex items-center justify-center"
+            className="p-1.5 rounded-md bg-[var(--card)] hover:border-[var(--primary)] border border-[var(--border)] cursor-pointer flex items-center justify-center"
             title="Back (Alt+Left or Mouse Back Button)"
           >
             <KenneyIcon name="arrowLeft" size={15} />
           </button>
           <button
             onClick={goForward}
-            className="p-1.5 rounded-md bg-[var(--background)] hover:border-[var(--primary)] border border-[var(--border)] cursor-pointer flex items-center justify-center"
+            className="p-1.5 rounded-md bg-[var(--card)] hover:border-[var(--primary)] border border-[var(--border)] cursor-pointer flex items-center justify-center"
             title="Forward (Alt+Right or Mouse Forward Button)"
           >
             <KenneyIcon name="arrowRight" size={15} />
           </button>
           <button
             onClick={goUp}
-            className="p-1.5 rounded-md bg-[var(--background)] hover:border-[var(--primary)] border border-[var(--border)] cursor-pointer flex items-center justify-center"
+            className="p-1.5 rounded-md bg-[var(--card)] hover:border-[var(--primary)] border border-[var(--border)] cursor-pointer flex items-center justify-center"
             title="Parent Directory (Alt+Up)"
           >
             <KenneyIcon name="arrowUp" size={15} />
           </button>
           <button
             onClick={refresh}
-            className="p-1.5 rounded-md bg-[var(--background)] hover:border-[var(--primary)] border border-[var(--border)] cursor-pointer flex items-center justify-center"
+            className="p-1.5 rounded-md bg-[var(--card)] hover:border-[var(--primary)] border border-[var(--border)] cursor-pointer flex items-center justify-center"
             title="Refresh (F5)"
           >
             <KenneyIcon name="return" size={15} />
@@ -584,8 +584,8 @@ export const RibbonHeader: React.FC = () => {
                 isDropOver
                   ? 'bg-indigo-500/25 ring-1 ring-inset ring-indigo-400 text-[var(--foreground)]'
                   : isActive
-                    ? 'bg-[var(--card)] text-[var(--foreground)] font-semibold border-b-2 border-b-[var(--primary)]'
-                    : 'bg-[var(--sidebar)] text-[var(--muted-foreground)] hover:bg-[var(--card)]/50 hover:text-[var(--foreground)]'
+                    ? 'bg-[var(--center-bg)] text-[var(--foreground)] font-semibold border-b-2 border-b-[var(--primary)]'
+                    : 'bg-[var(--sidebar)] text-[var(--muted-foreground)] hover:bg-[var(--card)] hover:text-[var(--foreground)]'
               }`}
             >
               <KenneyIcon name={isActive ? 'pouch' : 'book_closed'} size={14} />
@@ -607,7 +607,7 @@ export const RibbonHeader: React.FC = () => {
         })}
         <button
           onClick={() => addTab()}
-          className="h-full px-3.5 bg-[var(--sidebar)] hover:bg-[var(--card)]/70 border-r border-[var(--border)] flex items-center justify-center cursor-pointer shrink-0"
+          className="h-full px-3.5 bg-[var(--sidebar)] hover:bg-[var(--card)] border-r border-[var(--border)] flex items-center justify-center cursor-pointer shrink-0"
           title="New Tab"
         >
           <KenneyIcon name="plusBold" size={13} />

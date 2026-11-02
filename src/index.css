@@ -1,8 +1,9 @@
 @import "tailwindcss";
 
 :root {
-  --background: #e2e8f0;
-  --sidebar: #edf2f7;
+  --background: #f1f5f9;
+  --center-bg: #f8fafc;
+  --sidebar: #e2e8f0;
   --card: #ffffff;
   --border: #cbd5e1;
   --foreground: #0f172a;
@@ -12,10 +13,11 @@
 }
 
 html.dark {
-  --background: #07080c;
-  --sidebar: #0b0d12;
-  --card: #1b1f27;
-  --border: #2a303c;
+  --background: #10131a;
+  --center-bg: #090b10;
+  --sidebar: #161922;
+  --card: #1f2430;
+  --border: #283040;
   --foreground: #e2e8f0;
   --muted-foreground: #8b95a5;
   --primary: #4f58b8;
@@ -33,7 +35,7 @@ body {
 /* Darker, bluer scrollbar styling matching the Rook theme */
 * {
   scrollbar-width: thin;
-  scrollbar-color: #283859 #0c1220;
+  scrollbar-color: #2b3952 #090b10;
 }
 
 *::-webkit-scrollbar {
@@ -42,18 +44,18 @@ body {
 }
 
 *::-webkit-scrollbar-track {
-  background: #0c1220;
-  border-left: 1px solid #1c2840;
+  background: #090b10;
+  border-left: 1px solid #1a2233;
 }
 
 *::-webkit-scrollbar-thumb {
-  background: #233352;
+  background: #24324d;
   border-radius: 5px;
-  border: 2px solid #0c1220;
+  border: 2px solid #090b10;
 }
 
 *::-webkit-scrollbar-thumb:hover {
-  background: #334a78;
+  background: #364b73;
 }
 
 *::-webkit-scrollbar-thumb:active {
@@ -61,7 +63,7 @@ body {
 }
 
 *::-webkit-scrollbar-corner {
-  background: #0c1220;
+  background: #090b10;
 }
 
 html:not(.dark) * {
