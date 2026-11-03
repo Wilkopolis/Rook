@@ -21,7 +21,7 @@ Run from the repo root:
 | Type-check + build frontend → `dist/` | `npm run build` |
 | Frontend dev server (http://localhost:1420) | `npm run dev` |
 | Build desktop exe → `release\Rook.exe` | `npm run build:standalone` (or `build-standalone.bat`) |
-| Build + launch desktop | `npm run desktop` / `run-desktop.bat` |
+| Build + launch desktop | `npm run desktop` / `build-run.bat` |
 | Regenerate app icon | `npm run icons` |
 
 There is no test suite or linter. `npm run build` (`tsc -b && vite build`) is the

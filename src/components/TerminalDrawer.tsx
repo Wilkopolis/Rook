@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useExplorerStore } from '../store/useExplorerStore';
+import { naturalCompare } from '../utils/naturalSort';
 import { fsService } from '../services/fsService';
 import { KenneyIcon } from './KenneyIcon';
 
@@ -386,7 +387,7 @@ export const TerminalDrawer: React.FC = () => {
     rawCandidates.sort((a, b) => {
       if (a.isDirectory && !b.isDirectory) return -1;
       if (!a.isDirectory && b.isDirectory) return 1;
-      return a.name.localeCompare(b.name, undefined, { sensitivity: 'base', numeric: true });
+      return naturalCompare(a.name, b.name);
     });
 
     // Filter by name query

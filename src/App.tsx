@@ -8,6 +8,7 @@ import { TerminalDrawer } from './components/TerminalDrawer';
 import { ContextMenu } from './components/ContextMenu';
 import { KenneyIcon } from './components/KenneyIcon';
 import { formatBytes } from './utils/format';
+import { naturalCompare } from './utils/naturalSort';
 import { fsService } from './services/fsService';
 import { handleFileDropToDir, hasFileDragData } from './utils/dragDrop';
 
@@ -107,8 +108,8 @@ export const App: React.FC = () => {
       let cmp = 0;
       if (sortBy === 'size') cmp = a.sizeBytes - b.sizeBytes;
       else if (sortBy === 'modified') cmp = a.modifiedMs - b.modifiedMs;
-      else if (sortBy === 'extension') cmp = a.extension.localeCompare(b.extension);
-      else cmp = a.name.localeCompare(b.name);
+      else if (sortBy === 'extension') cmp = naturalCompare(a.extension, b.extension) || naturalCompare(a.name, b.name);
+      else cmp = naturalCompare(a.name, b.name);
       return sortAsc ? cmp : -cmp;
     });
     return list;
