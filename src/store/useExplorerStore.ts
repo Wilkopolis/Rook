@@ -1,5 +1,18 @@
 import { create } from 'zustand';
-import { DriveInfoItem, ExplorerTab, FilePreview, FolderSizeStats, FsEntry, LayoutMode, PinnedWorkspace, SortField, ThumbCacheStats } from '../types/fs';
+import {
+  DriveInfoItem,
+  ExplorerTab,
+  FilePreview,
+  FolderSizeStats,
+  FsEntry,
+  LayoutMode,
+  PinnedWorkspace,
+  QuickAccessFolder,
+  SidebarSectionId,
+  SortField,
+  ThumbCacheStats,
+  Workflow,
+} from '../types/fs';
 import { fsService } from '../services/fsService';
 import { inferTags } from '../utils/format';
 
@@ -63,7 +76,9 @@ interface ExplorerState {
   deepSearchResults: FsEntry[] | null;
   isSearching: boolean;
   dirVersion: number;
-  pinnedFolders: PinnedWorkspace[];
+  sidebarSectionOrder: SidebarSectionId[];
+  pinnedFolders: QuickAccessFolder[];
+  workflows: Workflow[];
   activeTagFilter: string;
   showSidebar: boolean;
   showInspector: boolean;
@@ -84,7 +99,20 @@ interface ExplorerState {
   checkDirWatcher: () => Promise<void>;
   runDeepSearch: (query?: string) => Promise<void>;
   toggleDeepSearch: () => void;
+  // Quick Access & Workflows
+  reorderSidebarSections: (order: SidebarSectionId[]) => void;
+  reorderQuickAccessFolders: (folders: QuickAccessFolder[]) => void;
+  reorderWorkflows: (workflows: Workflow[]) => void;
   togglePinFolder: (folderPath?: string) => void;
+  pinQuickAccessFolder: (folderPath?: string, label?: string) => void;
+  unpinQuickAccessFolder: (id: string) => void;
+  renameQuickAccessFolder: (id: string, newLabel: string) => void;
+  updateQuickAccessFolderStyle: (id: string, icon: string, iconColor: string) => void;
+  pinWorkflow: (customLabel?: string) => void;
+  unpinWorkflow: (id: string) => void;
+  renameWorkflow: (id: string, newLabel: string) => void;
+  updateWorkflowStyle: (id: string, icon: string, iconColor: string) => void;
+  loadWorkflow: (wf: Workflow) => Promise<void>;
   unpinWorkspace: (id: string) => void;
   renamePinnedWorkspace: (id: string, newLabel: string) => void;
   updatePinnedWorkspaceStyle: (id: string, icon: string, iconColor: string) => void;
@@ -200,47 +228,183 @@ const savedTags = (): Record<string, string[]> => {
   }
 };
 
-const makeDefaultPin = (pathStr: string, index: number): PinnedWorkspace => {
-  const norm = pathStr.replace(/[\\/]+$/, '');
-  const label = norm.split(/[\\/]/).filter(Boolean).pop() || norm;
-  const tabId = `pin-tab-${index}`;
-  return {
-    id: `pin-${index}-${norm.toLowerCase()}`,
-    label,
-    path: norm,
-    tabs: [
-      {
-        id: tabId,
-        title: label,
-        path: norm,
-        history: [norm],
-        historyIndex: 0,
-      },
-    ],
-    activeTabId: tabId,
-    layout: 'workspace',
-  };
-};
+const sanitizePath = (p: string) =>
+  p.replace(/c:\\Projects\\Repos\\Crush\\New Folder/gi, 'C:\\Projects\\Repos\\Rook');
 
-const savedPinnedFolders = (): PinnedWorkspace[] => {
+const defaultQuickAccess = (): QuickAccessFolder[] => [
+  {
+    id: 'qa-rook',
+    label: 'Rook Repo',
+    path: 'C:\\Projects\\Repos\\Rook',
+    icon: 'chess_rook',
+    iconColor: '#38bdf8',
+  },
+  {
+    id: 'qa-src',
+    label: 'src',
+    path: 'C:\\Projects\\Repos\\Rook\\src',
+    icon: 'folder',
+    iconColor: '#818cf8',
+  },
+  {
+    id: 'qa-repos',
+    label: 'Repos',
+    path: 'C:\\Projects\\Repos',
+    icon: 'briefcase',
+    iconColor: '#34d399',
+  },
+];
+
+const savedQuickAccessFolders = (): QuickAccessFolder[] => {
   try {
-    const raw = localStorage.getItem('rook_pinned_folders_v1');
+    const raw = localStorage.getItem('rook_quick_access_v1');
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) {
+      if (Array.isArray(parsed) && parsed.length > 0) {
         return parsed.map((item, idx) => {
           if (typeof item === 'string') {
-            return makeDefaultPin(item, idx);
+            const cleanPath = sanitizePath(item);
+            const norm = cleanPath.replace(/[\\/]+$/, '');
+            const label = norm.split(/[\\/]/).filter(Boolean).pop() || norm;
+            return { id: `qa-${idx}`, label, path: norm, icon: 'folder', iconColor: '#94a3b8' };
           }
-          return item as PinnedWorkspace;
+          return {
+            ...item,
+            path: sanitizePath(item.path),
+          };
         });
       }
     }
   } catch {}
-  return [
-    makeDefaultPin('c:\\Projects\\Repos\\Crush\\New Folder', 0),
-    makeDefaultPin('c:\\Projects\\Repos\\Crush\\New Folder\\public\\icons', 1),
-  ];
+  return defaultQuickAccess();
+};
+
+const defaultWorkflows = (): Workflow[] => [
+  {
+    id: 'wf-rook-core',
+    label: 'Rook Workspace',
+    path: 'C:\\Projects\\Repos\\Rook',
+    icon: 'crown',
+    iconColor: '#38bdf8',
+    layout: 'workspace',
+    tabs: [
+      {
+        id: 'tab-wf-rook',
+        title: 'Rook',
+        path: 'C:\\Projects\\Repos\\Rook',
+        history: ['C:\\Projects\\Repos\\Rook'],
+        historyIndex: 0,
+      },
+    ],
+    activeTabId: 'tab-wf-rook',
+  },
+  {
+    id: 'wf-split-commander',
+    label: 'Split Commander',
+    path: 'C:\\Projects\\Repos\\Rook',
+    rightPanePath: 'C:\\Projects\\Repos',
+    icon: 'scrollHorizontal',
+    iconColor: '#a855f7',
+    layout: 'dualpane',
+    tabs: [
+      {
+        id: 'tab-wf-split',
+        title: 'Rook',
+        path: 'C:\\Projects\\Repos\\Rook',
+        history: ['C:\\Projects\\Repos\\Rook'],
+        historyIndex: 0,
+      },
+    ],
+    activeTabId: 'tab-wf-split',
+  },
+  {
+    id: 'wf-deep-tree',
+    label: 'Deep Tree Browser',
+    path: 'C:\\Projects\\Repos\\Rook\\src',
+    icon: 'barsVertical',
+    iconColor: '#34d399',
+    layout: 'miller',
+    tabs: [
+      {
+        id: 'tab-wf-tree',
+        title: 'src',
+        path: 'C:\\Projects\\Repos\\Rook\\src',
+        history: ['C:\\Projects\\Repos\\Rook\\src'],
+        historyIndex: 0,
+      },
+    ],
+    activeTabId: 'tab-wf-tree',
+  },
+  {
+    id: 'wf-semantic-tags',
+    label: 'Semantic Tags',
+    path: 'C:\\Projects\\Repos\\Rook',
+    icon: 'menuGrid',
+    iconColor: '#f59e0b',
+    layout: 'faceted',
+    tabs: [
+      {
+        id: 'tab-wf-tags',
+        title: 'Rook',
+        path: 'C:\\Projects\\Repos\\Rook',
+        history: ['C:\\Projects\\Repos\\Rook'],
+        historyIndex: 0,
+      },
+    ],
+    activeTabId: 'tab-wf-tags',
+  },
+];
+
+const savedWorkflows = (): Workflow[] => {
+  try {
+    const raw = localStorage.getItem('rook_workflows_v1');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed.map((wf) => ({
+          ...wf,
+          path: sanitizePath(wf.path),
+          tabs: Array.isArray(wf.tabs)
+            ? wf.tabs.map((t: ExplorerTab) => ({ ...t, path: sanitizePath(t.path) }))
+            : [],
+        }));
+      }
+    }
+    // Migration from old rook_pinned_folders_v1
+    const oldRaw = localStorage.getItem('rook_pinned_folders_v1');
+    if (oldRaw) {
+      const oldParsed = JSON.parse(oldRaw);
+      if (Array.isArray(oldParsed) && oldParsed.length > 0 && oldParsed[0].tabs) {
+        return oldParsed.map((wf) => ({
+          ...wf,
+          path: sanitizePath(wf.path),
+          tabs: Array.isArray(wf.tabs)
+            ? wf.tabs.map((t: ExplorerTab) => ({ ...t, path: sanitizePath(t.path) }))
+            : [],
+        }));
+      }
+    }
+  } catch {}
+  return defaultWorkflows();
+};
+
+const defaultSectionOrder: SidebarSectionId[] = ['quickAccess', 'drives', 'workflows'];
+
+const savedSectionOrder = (): SidebarSectionId[] => {
+  try {
+    const raw = localStorage.getItem('rook_sidebar_section_order_v1');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        const valid = parsed.filter((id): id is SidebarSectionId =>
+          ['quickAccess', 'drives', 'workflows'].includes(id)
+        );
+        const missing = defaultSectionOrder.filter((id) => !valid.includes(id));
+        return [...valid, ...missing];
+      }
+    }
+  } catch {}
+  return defaultSectionOrder;
 };
 
 const initialSession = loadSavedSession();
@@ -286,7 +450,9 @@ export const useExplorerStore = create<ExplorerState>((set, get) => ({
   deepSearchResults: null,
   isSearching: false,
   dirVersion: 0,
-  pinnedFolders: savedPinnedFolders(),
+  sidebarSectionOrder: savedSectionOrder(),
+  pinnedFolders: savedQuickAccessFolders(),
+  workflows: savedWorkflows(),
   activeTagFilter: 'all',
   showSidebar: initialSession.showSidebar ?? true,
   showInspector: initialSession.showInspector ?? true,
@@ -775,7 +941,117 @@ export const useExplorerStore = create<ExplorerState>((set, get) => ({
       await get().refreshFolderSizeStats();
     }
   },
+  reorderSidebarSections: (order: SidebarSectionId[]) => {
+    localStorage.setItem('rook_sidebar_section_order_v1', JSON.stringify(order));
+    set({
+      sidebarSectionOrder: order,
+      statusMessage: 'Reordered sidebar sections',
+    });
+  },
+  reorderQuickAccessFolders: (folders: QuickAccessFolder[]) => {
+    localStorage.setItem('rook_quick_access_v1', JSON.stringify(folders));
+    set({
+      pinnedFolders: folders,
+      statusMessage: 'Reordered Quick Access',
+    });
+  },
+  reorderWorkflows: (workflows: Workflow[]) => {
+    localStorage.setItem('rook_workflows_v1', JSON.stringify(workflows));
+    set({
+      workflows,
+      statusMessage: 'Reordered Workflows',
+    });
+  },
   togglePinFolder: (folderPath?: string) => {
+    const { currentPath, pinnedFolders } = get();
+    const targetPath = (folderPath || currentPath).replace(/[\\/]+$/, '');
+    if (!targetPath) return;
+
+    const existing = pinnedFolders.find(
+      (p) => p.path.toLowerCase() === targetPath.toLowerCase()
+    );
+
+    if (existing) {
+      const next = pinnedFolders.filter((p) => p.id !== existing.id);
+      localStorage.setItem('rook_quick_access_v1', JSON.stringify(next));
+      set({
+        pinnedFolders: next,
+        statusMessage: `Unpinned "${existing.label}" from Quick Access`,
+      });
+      return;
+    }
+
+    const folderName = targetPath.split(/[\\/]/).filter(Boolean).pop() || targetPath;
+    const newPin: QuickAccessFolder = {
+      id: `qa-${Date.now()}`,
+      label: folderName,
+      path: targetPath,
+      icon: 'folder',
+      iconColor: '#94a3b8',
+    };
+
+    const next = [...pinnedFolders, newPin];
+    localStorage.setItem('rook_quick_access_v1', JSON.stringify(next));
+    set({
+      pinnedFolders: next,
+      statusMessage: `Pinned "${folderName}" to Quick Access`,
+    });
+  },
+  pinQuickAccessFolder: (folderPath?: string, label?: string) => {
+    const { currentPath, pinnedFolders } = get();
+    const targetPath = (folderPath || currentPath).replace(/[\\/]+$/, '');
+    if (!targetPath) return;
+
+    const folderName = label || targetPath.split(/[\\/]/).filter(Boolean).pop() || targetPath;
+    const filtered = pinnedFolders.filter((p) => p.path.toLowerCase() !== targetPath.toLowerCase());
+    const newPin: QuickAccessFolder = {
+      id: `qa-${Date.now()}`,
+      label: folderName,
+      path: targetPath,
+      icon: 'folder',
+      iconColor: '#94a3b8',
+    };
+
+    const next = [...filtered, newPin];
+    localStorage.setItem('rook_quick_access_v1', JSON.stringify(next));
+    set({
+      pinnedFolders: next,
+      statusMessage: `Pinned "${folderName}" to Quick Access`,
+    });
+  },
+  unpinQuickAccessFolder: (id: string) => {
+    const current = get().pinnedFolders;
+    const target = current.find((p) => p.id === id);
+    const next = current.filter((p) => p.id !== id);
+    localStorage.setItem('rook_quick_access_v1', JSON.stringify(next));
+    set({
+      pinnedFolders: next,
+      statusMessage: target ? `Unpinned "${target.label}" from Quick Access` : 'Unpinned from Quick Access',
+    });
+  },
+  renameQuickAccessFolder: (id: string, newLabel: string) => {
+    const trimmed = newLabel.trim();
+    if (!trimmed) return;
+    const current = get().pinnedFolders;
+    const next = current.map((p) => (p.id === id ? { ...p, label: trimmed } : p));
+    localStorage.setItem('rook_quick_access_v1', JSON.stringify(next));
+    set({
+      pinnedFolders: next,
+      statusMessage: `Renamed Quick Access entry to "${trimmed}"`,
+    });
+  },
+  updateQuickAccessFolderStyle: (id: string, icon: string, iconColor: string) => {
+    const current = get().pinnedFolders;
+    const next = current.map((p) =>
+      p.id === id ? { ...p, icon, iconColor } : p
+    );
+    localStorage.setItem('rook_quick_access_v1', JSON.stringify(next));
+    set({
+      pinnedFolders: next,
+      statusMessage: `Updated Quick Access icon`,
+    });
+  },
+  pinWorkflow: (customLabel?: string) => {
     const {
       currentPath,
       tabs,
@@ -786,29 +1062,23 @@ export const useExplorerStore = create<ExplorerState>((set, get) => ({
       sortAsc,
       showInspector,
       showHiddenFiles,
-      pinnedFolders,
+      workflows,
     } = get();
 
-    const targetPath = (folderPath || currentPath).replace(/[\\/]+$/, '');
-    if (!targetPath) return;
+    const rootPath = (currentPath || tabs[0]?.path || 'C:\\').replace(/[\\/]+$/, '');
+    const folderName = rootPath.split(/[\\/]/).filter(Boolean).pop() || rootPath;
+    const layoutShort =
+      layout === 'miller'
+        ? 'Tree'
+        : layout === 'dualpane'
+          ? 'Split'
+          : layout === 'faceted'
+            ? 'Tags'
+            : layout === 'command'
+              ? 'Fuzzy'
+              : 'Workspace';
 
-    // If invoked from a folder context menu and an identical single-folder pin exists, allow unpinning
-    if (folderPath) {
-      const existing = pinnedFolders.find(
-        (p) => p.path.toLowerCase() === targetPath.toLowerCase() && p.tabs.length <= 1
-      );
-      if (existing) {
-        const next = pinnedFolders.filter((p) => p.id !== existing.id);
-        localStorage.setItem('rook_pinned_folders_v1', JSON.stringify(next));
-        set({
-          pinnedFolders: next,
-          statusMessage: `Unpinned "${existing.label}" from Quick Access`,
-        });
-        return;
-      }
-    }
-
-    const folderName = targetPath.split(/[\\/]/).filter(Boolean).pop() || targetPath;
+    const defaultLabel = customLabel || `${folderName} (${layoutShort})`;
 
     let visibleCols: PinnedWorkspace['visibleCols'];
     let colWidths: PinnedWorkspace['colWidths'];
@@ -819,32 +1089,32 @@ export const useExplorerStore = create<ExplorerState>((set, get) => ({
       if (rawWidths) colWidths = JSON.parse(rawWidths);
     } catch {}
 
-    const snapshotTabs: ExplorerTab[] =
-      folderPath && folderPath.toLowerCase() !== currentPath.toLowerCase()
-        ? [
-            {
-              id: `tab-${Date.now()}`,
-              title: folderName,
-              path: targetPath,
-              history: [targetPath],
-              historyIndex: 0,
-            },
-          ]
-        : tabs.map((t) => ({ ...t, history: [...t.history] }));
+    const iconMap: Record<LayoutMode, { icon: string; color: string }> = {
+      workspace: { icon: 'crown', color: '#38bdf8' },
+      miller: { icon: 'barsVertical', color: '#34d399' },
+      dualpane: { icon: 'scrollHorizontal', color: '#a855f7' },
+      faceted: { icon: 'menuGrid', color: '#f59e0b' },
+      command: { icon: 'zoom', color: '#f43f5e' },
+      thumbnails: { icon: 'file_image', color: '#ec4899' },
+    };
 
-    const snapshotActiveTabId =
-      folderPath && folderPath.toLowerCase() !== currentPath.toLowerCase()
-        ? snapshotTabs[0].id
-        : activeTabId;
+    const iconInfo = iconMap[layout] || { icon: 'crown', color: '#38bdf8' };
 
-    const newPin: PinnedWorkspace = {
-      id: `pin-${Date.now()}`,
-      label: folderName,
-      path: targetPath,
+    const snapshotTabs: ExplorerTab[] = tabs.map((t) => ({
+      ...t,
+      history: [...t.history],
+    }));
+
+    const newWf: Workflow = {
+      id: `wf-${Date.now()}`,
+      label: defaultLabel,
+      path: rootPath,
+      icon: iconInfo.icon,
+      iconColor: iconInfo.color,
       tabs: snapshotTabs,
-      activeTabId: snapshotActiveTabId,
+      activeTabId,
       layout,
-      rightPanePath,
+      rightPanePath: layout === 'dualpane' ? rightPanePath : undefined,
       sortBy,
       sortAsc,
       showInspector,
@@ -853,83 +1123,83 @@ export const useExplorerStore = create<ExplorerState>((set, get) => ({
       colWidths,
     };
 
-    const next = [...pinnedFolders, newPin];
-    localStorage.setItem('rook_pinned_folders_v1', JSON.stringify(next));
+    const next = [...workflows, newWf];
+    localStorage.setItem('rook_workflows_v1', JSON.stringify(next));
     set({
-      pinnedFolders: next,
-      statusMessage: `Pinned "${folderName}" (${snapshotTabs.length} tab${
+      workflows: next,
+      statusMessage: `Saved workflow "${defaultLabel}" (${snapshotTabs.length} tab${
         snapshotTabs.length === 1 ? '' : 's'
-      }, ${layout} view) to Quick Access`,
+      }, ${layoutShort} layout)`,
     });
   },
-  unpinWorkspace: (id: string) => {
-    const current = get().pinnedFolders;
+  unpinWorkflow: (id: string) => {
+    const current = get().workflows;
     const target = current.find((p) => p.id === id);
     const next = current.filter((p) => p.id !== id);
-    localStorage.setItem('rook_pinned_folders_v1', JSON.stringify(next));
+    localStorage.setItem('rook_workflows_v1', JSON.stringify(next));
     set({
-      pinnedFolders: next,
-      statusMessage: target ? `Unpinned "${target.label}" from Quick Access` : 'Unpinned from Quick Access',
+      workflows: next,
+      statusMessage: target ? `Removed workflow "${target.label}"` : 'Removed workflow',
     });
   },
-  renamePinnedWorkspace: (id: string, newLabel: string) => {
+  renameWorkflow: (id: string, newLabel: string) => {
     const trimmed = newLabel.trim();
     if (!trimmed) return;
-    const current = get().pinnedFolders;
+    const current = get().workflows;
     const next = current.map((p) => (p.id === id ? { ...p, label: trimmed } : p));
-    localStorage.setItem('rook_pinned_folders_v1', JSON.stringify(next));
+    localStorage.setItem('rook_workflows_v1', JSON.stringify(next));
     set({
-      pinnedFolders: next,
-      statusMessage: `Renamed Quick Access entry to "${trimmed}"`,
+      workflows: next,
+      statusMessage: `Renamed workflow to "${trimmed}"`,
     });
   },
-  updatePinnedWorkspaceStyle: (id: string, icon: string, iconColor: string) => {
-    const current = get().pinnedFolders;
+  updateWorkflowStyle: (id: string, icon: string, iconColor: string) => {
+    const current = get().workflows;
     const next = current.map((p) =>
       p.id === id ? { ...p, icon, iconColor } : p
     );
-    localStorage.setItem('rook_pinned_folders_v1', JSON.stringify(next));
+    localStorage.setItem('rook_workflows_v1', JSON.stringify(next));
     set({
-      pinnedFolders: next,
-      statusMessage: `Updated Quick Access icon`,
+      workflows: next,
+      statusMessage: `Updated workflow icon`,
     });
   },
-  loadPinnedWorkspace: async (pin: PinnedWorkspace) => {
+  loadWorkflow: async (wf: Workflow) => {
     const restoredTabs: ExplorerTab[] =
-      Array.isArray(pin.tabs) && pin.tabs.length > 0
-        ? pin.tabs.map((t) => ({ ...t, history: Array.isArray(t.history) ? [...t.history] : [t.path] }))
+      Array.isArray(wf.tabs) && wf.tabs.length > 0
+        ? wf.tabs.map((t) => ({ ...t, history: Array.isArray(t.history) ? [...t.history] : [t.path] }))
         : [
             {
               id: `tab-${Date.now()}`,
-              title: pin.label,
-              path: pin.path,
-              history: [pin.path],
+              title: wf.label,
+              path: wf.path,
+              history: [wf.path],
               historyIndex: 0,
             },
           ];
 
-    const restoredActiveId = restoredTabs.some((t) => t.id === pin.activeTabId)
-      ? pin.activeTabId
+    const restoredActiveId = restoredTabs.some((t) => t.id === wf.activeTabId)
+      ? wf.activeTabId
       : restoredTabs[0].id;
     const activeTab = restoredTabs.find((t) => t.id === restoredActiveId) || restoredTabs[0];
 
-    const nextLayout = pin.layout || get().layout;
-    const nextSortBy = pin.sortBy ?? get().sortBy;
-    const nextSortAsc = pin.sortAsc ?? get().sortAsc;
-    const nextShowInspector = pin.showInspector ?? get().showInspector;
-    const nextShowHidden = pin.showHiddenFiles ?? get().showHiddenFiles;
+    const nextLayout = wf.layout || get().layout;
+    const nextSortBy = wf.sortBy ?? get().sortBy;
+    const nextSortAsc = wf.sortAsc ?? get().sortAsc;
+    const nextShowInspector = wf.showInspector ?? get().showInspector;
+    const nextShowHidden = wf.showHiddenFiles ?? get().showHiddenFiles;
 
-    if (pin.visibleCols) {
+    if (wf.visibleCols) {
       try {
-        localStorage.setItem('rook_visible_columns', JSON.stringify(pin.visibleCols));
+        localStorage.setItem('rook_visible_columns', JSON.stringify(wf.visibleCols));
       } catch {}
     }
-    if (pin.colWidths) {
+    if (wf.colWidths) {
       try {
-        localStorage.setItem('rook_column_widths', JSON.stringify(pin.colWidths));
+        localStorage.setItem('rook_column_widths', JSON.stringify(wf.colWidths));
       } catch {}
     }
-    if (pin.visibleCols || pin.colWidths) {
+    if (wf.visibleCols || wf.colWidths) {
       window.dispatchEvent(new CustomEvent('rook-columns-restored'));
     }
 
@@ -941,9 +1211,9 @@ export const useExplorerStore = create<ExplorerState>((set, get) => ({
       sortAsc: nextSortAsc,
       showInspector: nextShowInspector,
       showHiddenFiles: nextShowHidden,
-      statusMessage: `Loaded pinned workspace "${pin.label}" (${restoredTabs.length} tab${
+      statusMessage: `Loaded workflow "${wf.label}" (${restoredTabs.length} tab${
         restoredTabs.length === 1 ? '' : 's'
-      })`,
+      }, ${nextLayout} layout)`,
     });
 
     persistSession({
@@ -954,13 +1224,37 @@ export const useExplorerStore = create<ExplorerState>((set, get) => ({
       sortAsc: nextSortAsc,
       showInspector: nextShowInspector,
       showHiddenFiles: nextShowHidden,
-      rightPanePath: pin.rightPanePath,
+      rightPanePath: wf.rightPanePath,
     });
 
     await get().navigateTo(activeTab.path, false);
-    if (pin.rightPanePath) {
-      await get().navigateRightPane(pin.rightPanePath);
+    if (nextLayout === 'dualpane' && wf.rightPanePath) {
+      await get().navigateRightPane(wf.rightPanePath);
     }
+  },
+  unpinWorkspace: (id: string) => {
+    if (get().workflows.some((w) => w.id === id)) {
+      get().unpinWorkflow(id);
+    } else {
+      get().unpinQuickAccessFolder(id);
+    }
+  },
+  renamePinnedWorkspace: (id: string, newLabel: string) => {
+    if (get().workflows.some((w) => w.id === id)) {
+      get().renameWorkflow(id, newLabel);
+    } else {
+      get().renameQuickAccessFolder(id, newLabel);
+    }
+  },
+  updatePinnedWorkspaceStyle: (id: string, icon: string, iconColor: string) => {
+    if (get().workflows.some((w) => w.id === id)) {
+      get().updateWorkflowStyle(id, icon, iconColor);
+    } else {
+      get().updateQuickAccessFolderStyle(id, icon, iconColor);
+    }
+  },
+  loadPinnedWorkspace: async (pin: PinnedWorkspace) => {
+    await get().loadWorkflow(pin);
   },
   setActiveTagFilter: (activeTagFilter) => set({ activeTagFilter }),
   toggleSidebar: () => {

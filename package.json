@@ -6,6 +6,7 @@
   "main": "electron/main.mjs",
   "scripts": {
     "dev": "vite",
+    "icons": "python scripts/gen-app-icon.py",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "desktop": "npm run build:standalone && .\\release\\Rook.exe",

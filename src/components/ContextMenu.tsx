@@ -15,6 +15,7 @@ export const ContextMenu: React.FC = () => {
     openEntry,
     addTab,
     togglePinFolder,
+    pinWorkflow,
     revealInExplorer,
     copyToClipboard,
     cutToClipboard,
@@ -151,8 +152,7 @@ export const ContextMenu: React.FC = () => {
                 <span>
                   {pinnedFolders.some(
                     (p) =>
-                      p.path.toLowerCase() === entry.path.replace(/[\\/]+$/, '').toLowerCase() &&
-                      (p.tabs?.length || 1) <= 1
+                      p.path.toLowerCase() === entry.path.replace(/[\\/]+$/, '').toLowerCase()
                   )
                     ? 'Unpin from Quick Access'
                     : 'Pin to Quick Access'}
@@ -382,12 +382,30 @@ export const ContextMenu: React.FC = () => {
           <button
             onClick={() => {
               closeContextMenu();
-              togglePinFolder();
+              togglePinFolder(currentPath);
             }}
             className="w-full px-3 py-1.5 hover:bg-[var(--primary)]/20 flex items-center gap-2 cursor-pointer text-left"
           >
             <KenneyIcon name="award" size={14} />
-            <span>Pin Workspace to Quick Access</span>
+            <span>
+              {pinnedFolders.some(
+                (p) =>
+                  p.path.toLowerCase() === currentPath.replace(/[\\/]+$/, '').toLowerCase()
+              )
+                ? 'Unpin Folder from Quick Access'
+                : 'Pin Folder to Quick Access'}
+            </span>
+          </button>
+
+          <button
+            onClick={() => {
+              closeContextMenu();
+              pinWorkflow();
+            }}
+            className="w-full px-3 py-1.5 hover:bg-[var(--primary)]/20 flex items-center gap-2 cursor-pointer text-left"
+          >
+            <KenneyIcon name="crown" size={14} className="text-sky-400" />
+            <span>Save Workflow (Folders & Layout)</span>
           </button>
 
           {clipboard && (

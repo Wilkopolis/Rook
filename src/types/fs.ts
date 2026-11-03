@@ -81,6 +81,18 @@ export interface PinnedWorkspace {
   };
 }
 
+export type Workflow = PinnedWorkspace;
+
+export type SidebarSectionId = 'quickAccess' | 'drives' | 'workflows';
+
+export interface QuickAccessFolder {
+  id: string;
+  label: string;
+  path: string;
+  icon?: string;
+  iconColor?: string;
+}
+
 export interface DriveInfoItem {
   name: string;
   label?: string;

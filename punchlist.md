@@ -56,7 +56,7 @@
 
 ## Phase 3: Layout Paradigms & Inspector
 - [x] **View Mode 1: Modern Workspace**
-  - [x] Collapsible left sidebar (`SidebarPane.tsx`: Quick Access, Drives, Smart Workflows)
+  - [x] Collapsible left sidebar (`SidebarPane.tsx`: Quick Access, Drives, Smart Workflows with drag-and-drop reordering for sections and items)
   - [x] Detailed table list view (`LayoutsView.tsx`)
 - [x] **View Mode 2: Miller Columns**
   - [x] 3-column horizontal cascading browser (Parent, Active Directory, Child/Preview)
