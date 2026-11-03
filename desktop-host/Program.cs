@@ -32,6 +32,9 @@ public class RookWindow : Form
     public static extern bool ReleaseCapture();
 
     [DllImport("user32.dll")]
+    public static extern short GetAsyncKeyState(int vKey);
+
+    [DllImport("user32.dll")]
     public static extern IntPtr SendMessage(IntPtr hWnd, int Msg, int wParam, int lParam);
 
     [DllImport("user32.dll")]
@@ -292,7 +295,9 @@ public class RookWindow : Form
 
             try
             {
-                if ((Control.MouseButtons & MouseButtons.Left) == 0 && (Control.MouseButtons & MouseButtons.Right) == 0)
+                short left = GetAsyncKeyState(0x01); // VK_LBUTTON
+                short right = GetAsyncKeyState(0x02); // VK_RBUTTON
+                if ((left & 0x8000) == 0 && (right & 0x8000) == 0)
                 {
                     return;
                 }
@@ -303,12 +308,29 @@ public class RookWindow : Form
                 data.SetData(DataFormats.UnicodeText, string.Join(Environment.NewLine, valid));
                 data.SetData(DataFormats.Text, string.Join(Environment.NewLine, valid));
 
+                // text/uri-list for browsers (Chrome, Edge, Firefox drop zones and web upload inputs)
+                var uriList = string.Join("\r\n", valid.Select(p => new Uri(p).AbsoluteUri));
+                data.SetData("text/uri-list", uriList);
+
+                // UniformResourceLocatorW & UniformResourceLocator for browser tab bars / address bars
+                if (valid.Length > 0)
+                {
+                    var firstUri = new Uri(valid[0]).AbsoluteUri;
+                    byte[] uriBytes = Encoding.Unicode.GetBytes(firstUri + "\0");
+                    data.SetData("UniformResourceLocatorW", new MemoryStream(uriBytes));
+                    byte[] asciiBytes = Encoding.ASCII.GetBytes(firstUri + "\0");
+                    data.SetData("UniformResourceLocator", new MemoryStream(asciiBytes));
+
+                    data.SetData("FileNameW", valid[0]);
+                    data.SetData("FileName", valid[0]);
+                }
+
                 // Preferred DropEffect format: allow Copy and Move
                 byte[] dropEffect = new byte[] { (byte)(DragDropEffects.Copy | DragDropEffects.Move), 0, 0, 0 };
                 var dropEffectStream = new MemoryStream(dropEffect);
                 data.SetData("Preferred DropEffect", dropEffectStream);
 
-                var effect = DoDragDrop(data, DragDropEffects.Copy | DragDropEffects.Move | DragDropEffects.Link);
+                var effect = _webView.DoDragDrop(data, DragDropEffects.Copy | DragDropEffects.Move | DragDropEffects.Link);
 
                 try
                 {

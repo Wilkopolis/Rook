@@ -289,8 +289,8 @@ export const LayoutsView: React.FC = () => {
 
     const webview = (window as any).chrome?.webview;
     if (webview && typeof webview.postMessage === 'function') {
-      e.preventDefault();
       webview.postMessage({ type: 'startDrag', paths });
+      e.preventDefault();
       return;
     }
 
