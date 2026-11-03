@@ -11,6 +11,7 @@ import {
 import { KenneyIcon } from './KenneyIcon';
 import { FileThumbnail } from './FileThumbnail';
 import { handleFileDropToDir, hasFileDragData } from '../utils/dragDrop';
+import { logger } from '../services/logger';
 
 export const LayoutsView: React.FC = () => {
   const {
@@ -57,6 +58,9 @@ export const LayoutsView: React.FC = () => {
 
   const updateThumbGridSize = (next: number) => {
     const clamped = Math.max(40, Math.min(240, Math.round(next)));
+    if (clamped !== thumbGridSize) {
+      logger.action('thumbnail size changed', { from: thumbGridSize, to: clamped });
+    }
     setThumbGridSize(clamped);
     try {
       localStorage.setItem('rook_thumb_grid_size', String(clamped));

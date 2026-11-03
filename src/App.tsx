@@ -65,6 +65,10 @@ export const App: React.FC = () => {
     clearThumbCache,
     clearFolderSizeCache,
     rescanCurrentFolderSizes,
+    loggingEnabled,
+    logFile,
+    setLoggingEnabled,
+    openLogFolder,
     openPowershellCurrent,
     requestDeleteSelected,
     confirmDeleteSelected,
@@ -624,6 +628,40 @@ export const App: React.FC = () => {
                       {folderSizeStats.dbPath}
                     </div>
                   )}
+                </div>
+
+                {/* Diagnostic Logging */}
+                <div className="p-2.5 rounded-lg bg-[var(--background)] border border-[var(--border)] space-y-2.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="space-y-1">
+                      <div className="font-medium text-[var(--foreground)] flex items-center gap-1.5">
+                        <KenneyIcon name="notepad" size={14} />
+                        <span>Diagnostic Logging</span>
+                      </div>
+                      <div className="text-[var(--muted-foreground)]">
+                        Record user actions and performance timings. Crashes and errors are always recorded.
+                      </div>
+                    </div>
+                    <input
+                      type="checkbox"
+                      aria-label="Enable diagnostic logging"
+                      checked={loggingEnabled}
+                      onChange={(e) => setLoggingEnabled(e.target.checked)}
+                      className="w-4 h-4 accent-[var(--primary)] cursor-pointer shrink-0"
+                    />
+                  </div>
+                  <div className="flex items-center justify-between gap-2 pt-2 border-t border-[var(--border)]/60">
+                    <div className="font-mono text-[var(--muted-foreground)] truncate" title={logFile ?? undefined}>
+                      {logFile ?? 'Log location unavailable'}
+                    </div>
+                    <button
+                      onClick={openLogFolder}
+                      className="h-8 px-3 rounded-md bg-[var(--card)] border border-[var(--border)] hover:border-[var(--primary)] font-medium text-xs cursor-pointer flex items-center gap-1.5 justify-center transition-colors shrink-0"
+                    >
+                      <KenneyIcon name="open" size={12} />
+                      <span>Open Logs</span>
+                    </button>
+                  </div>
                 </div>
               </div>
 

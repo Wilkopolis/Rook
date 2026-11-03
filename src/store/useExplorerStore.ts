@@ -14,6 +14,7 @@ import {
   Workflow,
 } from '../types/fs';
 import { fsService } from '../services/fsService';
+import { logger } from '../services/logger';
 import { inferTags } from '../utils/format';
 
 export type UndoOperation =
@@ -46,6 +47,8 @@ interface ExplorerState {
   gitStatuses: Record<string, string>;
   thumbStats: ThumbCacheStats;
   folderSizeStats: FolderSizeStats;
+  loggingEnabled: boolean;
+  logFile: string | null;
   isLoading: boolean;
   error: string | null;
   statusMessage: string | null;
@@ -135,6 +138,9 @@ interface ExplorerState {
   refreshFolderSizeStats: () => Promise<void>;
   clearFolderSizeCache: () => Promise<void>;
   rescanCurrentFolderSizes: () => Promise<void>;
+  refreshLogSettings: () => Promise<void>;
+  setLoggingEnabled: (enabled: boolean) => Promise<void>;
+  openLogFolder: () => Promise<void>;
 
   // Clipboard & Undo Actions
   copyToClipboard: () => void;
@@ -423,6 +429,8 @@ export const useExplorerStore = create<ExplorerState>((set, get) => ({
   gitStatuses: {},
   thumbStats: { count: 0, totalBytes: 0 },
   folderSizeStats: { folderCount: 0, dbBytes: 0, pendingScans: 0 },
+  loggingEnabled: logger.isEnabled(),
+  logFile: null,
   isLoading: false,
   error: null,
   statusMessage: null,
@@ -497,8 +505,37 @@ export const useExplorerStore = create<ExplorerState>((set, get) => ({
       await get().navigateRightPane(rightTarget);
       await get().refreshThumbStats();
       await get().refreshFolderSizeStats();
+      await get().refreshLogSettings();
     } catch (err: any) {
       set({ error: err.message, isLoading: false });
+    }
+  },
+
+  refreshLogSettings: async () => {
+    const s = await fsService.getLogSettings();
+    logger.setEnabled(!!s.enabled);
+    set({ loggingEnabled: !!s.enabled, logFile: s.logFile ?? null });
+  },
+
+  setLoggingEnabled: async (enabled: boolean) => {
+    try {
+      const s = await fsService.setLoggingEnabled(enabled);
+      logger.setEnabled(!!s.enabled);
+      set({
+        loggingEnabled: !!s.enabled,
+        logFile: s.logFile ?? null,
+        statusMessage: s.enabled ? 'Diagnostic logging enabled' : 'Diagnostic logging disabled',
+      });
+    } catch (err: any) {
+      set({ error: `Could not change logging setting: ${err.message}` });
+    }
+  },
+
+  openLogFolder: async () => {
+    try {
+      await fsService.openLogFolder();
+    } catch (err: any) {
+      set({ error: `Could not open log folder: ${err.message}` });
     }
   },
 

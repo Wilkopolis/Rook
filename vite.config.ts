@@ -38,6 +38,15 @@ const thumbCacheDir = path.join(
   'Thumbnails'
 );
 
+// Dev-server-only stand-in for the desktop host's logger (see desktop-host/RookLog.cs).
+const devLogDir = path.join(
+  process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local'),
+  'Rook',
+  'logs'
+);
+const devLogFile = path.join(devLogDir, 'rook-dev.log');
+let devLoggingEnabled = false;
+
 function computeThumbKey(fullPath: string, mtimeMs: number, sizeBytes: number, thumbSize: number): string {
   const raw = `${fullPath.toLowerCase()}|${Math.floor(mtimeMs)}|${sizeBytes}|${thumbSize}`;
   return crypto.createHash('sha256').update(raw).digest('hex').slice(0, 24);
@@ -122,6 +131,36 @@ function localFsBridgePlugin(): Plugin {
           }
 
           if (['winDrag', 'winResize', 'winMinimize', 'winMaximize', 'winClose'].includes(action)) {
+            res.end(JSON.stringify({ ok: true }));
+            return;
+          }
+
+          if (action === 'logSettings') {
+            if (typeof body.enabled === 'boolean') devLoggingEnabled = body.enabled;
+            res.end(JSON.stringify({ enabled: devLoggingEnabled, logDir: devLogDir, logFile: devLogFile }));
+            return;
+          }
+
+          if (action === 'log') {
+            const entries: any[] = Array.isArray(body.entries) ? body.entries.slice(0, 500) : [];
+            const lines = entries
+              .filter((e) => devLoggingEnabled || e?.level === 'error' || e?.level === 'fatal')
+              .map((e) => {
+                const ts = new Date(typeof e.ts === 'number' ? e.ts : Date.now()).toISOString();
+                const data = e.data === undefined ? '' : `\n    ${JSON.stringify(e.data)}`;
+                return `${ts} ${String(e.level || 'info').toUpperCase().padEnd(5)} [ui/${e.category || 'app'}] ${e.message || ''}${data}\n`;
+              });
+            if (lines.length) {
+              await fs.mkdir(devLogDir, { recursive: true });
+              await fs.appendFile(devLogFile, lines.join(''));
+            }
+            res.end(JSON.stringify({ ok: true, written: lines.length }));
+            return;
+          }
+
+          if (action === 'openLogFolder') {
+            await fs.mkdir(devLogDir, { recursive: true });
+            execFile('explorer.exe', [devLogDir], { windowsHide: false }).unref();
             res.end(JSON.stringify({ ok: true }));
             return;
           }

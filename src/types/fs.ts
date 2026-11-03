@@ -107,3 +107,19 @@ export interface SystemInfo {
   driveDetails?: DriveInfoItem[];
   platform: string;
 }
+
+export type LogLevel = 'debug' | 'info' | 'perf' | 'warn' | 'error' | 'fatal';
+
+export interface LogEntry {
+  level: LogLevel;
+  category: string;
+  message: string;
+  data?: unknown;
+  ts: number;
+}
+
+export interface LogSettings {
+  enabled: boolean;
+  logDir?: string;
+  logFile?: string;
+}

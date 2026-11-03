@@ -259,13 +259,34 @@ public class RookWindow : Form
                         $"window.dispatchEvent(new CustomEvent('rook-external-drop', {{ detail: {payloadJson} }}));"
                     );
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    RookLog.Error("webview/message", "Failed to handle web message", ex);
+                }
             };
+
+            _webView.CoreWebView2.ProcessFailed += (_, e) =>
+            {
+                string frames = "";
+                try
+                {
+                    frames = string.Join(", ", (e.FrameInfosForFailedProcess ?? Enumerable.Empty<CoreWebView2FrameInfo>())
+                        .Select(f => $"{f.Name}:{f.Source}"));
+                }
+                catch { }
+                RookLog.Error("webview/process-failed",
+                    $"WebView2 process failed: kind={e.ProcessFailedKind} reason={e.Reason} exitCode={e.ExitCode} " +
+                    $"process={e.ProcessDescription} frames=[{frames}]");
+            };
+
+            _webView.ZoomFactorChanged += (_, _) =>
+                RookLog.Info("action", $"WebView zoom factor changed to {_webView.ZoomFactor:0.###}");
 
             _webView.Source = new Uri(_appUrl);
         }
-        catch
+        catch (Exception ex)
         {
+            RookLog.Error("webview/init", "WebView2 initialization failed; falling back to the default browser", ex);
             // Fallback if WebView2 runtime encounters an issue
             Process.Start(new ProcessStartInfo { FileName = _appUrl, UseShellExecute = true });
         }
@@ -345,7 +366,7 @@ public class RookWindow : Form
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"StartFileDrag error: {ex.Message}");
+                RookLog.Error("drag", "StartFileDrag failed", ex);
             }
         }));
     }
@@ -931,20 +952,31 @@ public class Program
                     int clampedMb = Math.Clamp(mb, 16, 10240);
                     MaxCacheBytes = clampedMb * 1024L * 1024L;
                 }
+                if (doc.RootElement.TryGetProperty("loggingEnabled", out var logProp))
+                {
+                    RookLog.Enabled = logProp.ValueKind == JsonValueKind.True;
+                }
             }
         }
-        catch { }
+        catch (Exception ex)
+        {
+            RookLog.Error("settings", "Failed to load settings.json", ex);
+        }
     }
 
-    private static void SaveSettings(int maxCacheMb)
+    private static void SaveSettings()
     {
         try
         {
             var dir = Path.GetDirectoryName(SettingsPath);
             if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
-            File.WriteAllText(SettingsPath, JsonSerializer.Serialize(new { maxCacheMb }));
+            int maxCacheMb = (int)(MaxCacheBytes / (1024L * 1024L));
+            File.WriteAllText(SettingsPath, JsonSerializer.Serialize(new { maxCacheMb, loggingEnabled = RookLog.Enabled }));
         }
-        catch { }
+        catch (Exception ex)
+        {
+            RookLog.Error("settings", "Failed to save settings.json", ex);
+        }
     }
 
     private static void DeleteItemWithRecycleOption(string targetPath, bool permanent)
@@ -1264,11 +1296,43 @@ public class Program
         return "notepad++.exe";
     }
 
+    private static void InstallCrashHandlers()
+    {
+        AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+        {
+            RookLog.Fatal("crash", $"Unhandled exception (terminating={e.IsTerminating})", e.ExceptionObject as Exception);
+        };
+        TaskScheduler.UnobservedTaskException += (_, e) =>
+        {
+            RookLog.Error("unobserved-task", "Unobserved task exception", e.Exception);
+        };
+        Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
+        Application.ThreadException += (_, e) =>
+        {
+            RookLog.Error("ui-thread", "Unhandled UI thread exception", e.Exception);
+            // Preserve the default WinForms behavior: let the user continue or quit.
+            try
+            {
+                using var dlg = new ThreadExceptionDialog(e.Exception);
+                if (dlg.ShowDialog() == DialogResult.Abort) Application.Exit();
+            }
+            catch { }
+        };
+    }
+
+    // Requests that are high-frequency, user-paced (window drag/resize block until mouse-up) or the logger itself.
+    private static readonly HashSet<string> UntimedActions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "log", "logSettings", "dirVersion", "winDrag", "winResize", "saveUiState", "thumbStats", "folderSizeStats"
+    };
+
     [STAThread]
     public static void Main(string[] args)
     {
+        InstallCrashHandlers();
         Directory.CreateDirectory(ThumbCacheDir);
         LoadSettings();
+        RookLog.Info("lifecycle", "Host starting");
         Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
@@ -1294,6 +1358,43 @@ public class Program
         });
 
         var app = builder.Build();
+
+        // API timing + last-chance exception logging for every /api/fs request.
+        app.Use(async (ctx, next) =>
+        {
+            var reqPath = ctx.Request.Path.Value ?? "";
+            if (!reqPath.StartsWith("/api/fs/", StringComparison.OrdinalIgnoreCase))
+            {
+                await next();
+                return;
+            }
+            var action = reqPath.Substring("/api/fs/".Length);
+            var sw = Stopwatch.StartNew();
+            try
+            {
+                await next();
+            }
+            catch (Exception ex)
+            {
+                RookLog.Error($"api/{action}", $"Unhandled exception in {ctx.Request.Method} {reqPath}", ex);
+                throw;
+            }
+            finally
+            {
+                sw.Stop();
+                if (RookLog.Enabled && !UntimedActions.Contains(action))
+                {
+                    long ms = sw.ElapsedMilliseconds;
+                    bool isThumbOrRaw = action is "thumb" or "raw";
+                    // Thumbnails/raw media are requested in bulk; only record the slow ones.
+                    if (!isThumbOrRaw || ms >= 250)
+                    {
+                        RookLog.Write(ms >= 1000 ? "warn" : "perf", "api",
+                            $"{action} {ctx.Response.StatusCode} {ms}ms");
+                    }
+                }
+            }
+        });
         var asm = Assembly.GetExecutingAssembly();
         var resourceNames = asm.GetManifestResourceNames();
 
@@ -1459,7 +1560,7 @@ public class Program
                         : 250;
                     int clampedMb = Math.Clamp(reqMb, 16, 10240);
                     MaxCacheBytes = clampedMb * 1024L * 1024L;
-                    SaveSettings(clampedMb);
+                    SaveSettings();
                     EnforceCacheCap();
                     var (count, totalBytes) = GetCacheTelemetry();
                     return Results.Json(new { count, totalBytes, maxCacheMb = clampedMb, cacheDir = ThumbCacheDir });
@@ -2029,10 +2130,65 @@ public class Program
                     return Results.Json(new { ok = true });
                 }
 
+                if (action == "log")
+                {
+                    int written = 0;
+                    if (root.TryGetProperty("entries", out var entriesProp) && entriesProp.ValueKind == JsonValueKind.Array)
+                    {
+                        foreach (var entry in entriesProp.EnumerateArray().Take(500))
+                        {
+                            if (entry.ValueKind != JsonValueKind.Object) continue;
+                            string Str(string name) =>
+                                entry.TryGetProperty(name, out var p) && p.ValueKind == JsonValueKind.String ? p.GetString() ?? "" : "";
+                            var level = Str("level");
+                            if (string.IsNullOrEmpty(level)) level = "info";
+                            if (!RookLog.ShouldWrite(level)) continue;
+                            string? data = null;
+                            if (entry.TryGetProperty("data", out var dataProp) && dataProp.ValueKind != JsonValueKind.Null && dataProp.ValueKind != JsonValueKind.Undefined)
+                            {
+                                data = dataProp.ValueKind == JsonValueKind.String ? dataProp.GetString() : dataProp.GetRawText();
+                            }
+                            DateTimeOffset? ts = null;
+                            if (entry.TryGetProperty("ts", out var tsProp) && tsProp.TryGetInt64(out long tsMs))
+                            {
+                                ts = DateTimeOffset.FromUnixTimeMilliseconds(tsMs).ToLocalTime();
+                            }
+                            var category = Str("category");
+                            RookLog.Write(level, string.IsNullOrEmpty(category) ? "app" : category, Str("message"), "ui", data, ts);
+                            written++;
+                        }
+                    }
+                    return Results.Json(new { ok = true, written });
+                }
+
+                if (action == "logSettings")
+                {
+                    if (root.TryGetProperty("enabled", out var enProp) &&
+                        (enProp.ValueKind == JsonValueKind.True || enProp.ValueKind == JsonValueKind.False))
+                    {
+                        bool next = enProp.ValueKind == JsonValueKind.True;
+                        if (next != RookLog.Enabled)
+                        {
+                            if (!next) RookLog.Info("settings", "Verbose logging disabled by user");
+                            RookLog.Enabled = next;
+                            if (next) RookLog.Info("settings", "Verbose logging enabled by user");
+                            SaveSettings();
+                        }
+                    }
+                    return Results.Json(new { enabled = RookLog.Enabled, logDir = RookLog.LogDir, logFile = RookLog.LogFile });
+                }
+
+                if (action == "openLogFolder")
+                {
+                    RookLog.OpenLogFolder();
+                    return Results.Json(new { ok = true });
+                }
+
                 return Results.NotFound(new { error = "Unknown action" });
             }
             catch (Exception ex)
             {
+                RookLog.Error($"api/{action}", $"Action '{action}' failed: {ex.Message}", ex);
                 return Results.Json(new { error = ex.Message }, statusCode: 500);
             }
         });
@@ -2051,6 +2207,7 @@ public class Program
             catch { }
 
             var bootstrapScript = $@"<script>
+window.__ROOK_LOGGING_ENABLED__ = {(RookLog.Enabled ? "true" : "false")};
 (function() {{
   try {{
     var diskState = {savedJson};
@@ -2137,8 +2294,10 @@ public class Program
         var url = app.Urls.First();
 
         MainWindow = new RookWindow(url);
+        RookLog.Info("lifecycle", $"Host listening on {url}");
         Application.Run(MainWindow);
 
+        RookLog.Info("lifecycle", "Host shutting down");
         app.StopAsync().GetAwaiter().GetResult();
     }
 }

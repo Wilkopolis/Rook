@@ -1,21 +1,70 @@
-import { DirListResponse, FilePreview, FolderSizeStats, SystemInfo, ThumbCacheStats } from '../types/fs';
+import {
+  DirListResponse,
+  FilePreview,
+  FolderSizeStats,
+  LogEntry,
+  LogSettings,
+  SystemInfo,
+  ThumbCacheStats,
+} from '../types/fs';
 
 const isTauri = () => typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 
+export type ApiTimingListener = (action: string, durationMs: number, ok: boolean, error?: string) => void;
+
+let apiTimingListener: ApiTimingListener | null = null;
+
+/** Registered by the logger so fsService does not import it (avoids a module cycle). */
+export function setApiTimingListener(listener: ApiTimingListener | null) {
+  apiTimingListener = listener;
+}
+
 async function postApi<T>(action: string, body: Record<string, any> = {}): Promise<T> {
-  const res = await fetch(`/api/fs/${action}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  const data = await res.json();
-  if (!res.ok) {
-    throw new Error(data.error || `FS request failed: ${action}`);
+  const started = performance.now();
+  try {
+    const res = await fetch(`/api/fs/${action}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error || `FS request failed: ${action}`);
+    }
+    apiTimingListener?.(action, performance.now() - started, true);
+    return data as T;
+  } catch (err: any) {
+    apiTimingListener?.(action, performance.now() - started, false, err?.message || String(err));
+    throw err;
   }
-  return data as T;
 }
 
 export const fsService = {
+  /** Sends log entries straight to the host; bypasses postApi so logging never logs itself. */
+  async writeLogs(entries: LogEntry[], keepalive = false): Promise<void> {
+    await fetch('/api/fs/log', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ entries }),
+      keepalive,
+    });
+  },
+
+  async getLogSettings(): Promise<LogSettings> {
+    try {
+      return await postApi<LogSettings>('logSettings');
+    } catch {
+      return { enabled: false };
+    }
+  },
+
+  async setLoggingEnabled(enabled: boolean): Promise<LogSettings> {
+    return postApi<LogSettings>('logSettings', { enabled });
+  },
+
+  async openLogFolder(): Promise<{ ok: boolean }> {
+    return postApi('openLogFolder');
+  },
   async getSystemInfo(): Promise<SystemInfo> {
     return postApi<SystemInfo>('info');
   },

@@ -158,8 +158,6 @@ export const SidebarPane: React.FC = () => {
 
   const [isQuickAccessDropPinActive, setIsQuickAccessDropPinActive] = useState(false);
 
-  if (!showSidebar) return null;
-
   const commitRename = () => {
     const clean = editingLabel.trim();
     if (clean && editing) {
@@ -200,6 +198,9 @@ export const SidebarPane: React.FC = () => {
     () => ICON_CATALOG.find((item) => item.id === selectedIcon),
     [selectedIcon]
   );
+
+  // Must stay after every hook: an early return above them changes the hook count on toggle (React #300/#310).
+  if (!showSidebar) return null;
 
   const bindDropTarget = (targetDir: string) => ({
     onDragOver: (e: React.DragEvent) => {
