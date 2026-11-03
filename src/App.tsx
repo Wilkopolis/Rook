@@ -489,9 +489,9 @@ export const App: React.FC = () => {
                 </div>
                 <button
                   onClick={toggleOptionsModal}
-                  className="p-1 rounded hover:bg-[var(--background)] cursor-pointer"
+                  className="w-7 h-7 rounded-md hover:bg-white/[0.08] flex items-center justify-center cursor-pointer opacity-70 hover:opacity-100 transition-colors"
                 >
-                  <KenneyIcon name="cross" size={12} />
+                  <KenneyIcon name="cross" size={13} />
                 </button>
               </div>
 
@@ -503,7 +503,7 @@ export const App: React.FC = () => {
                   </div>
                   <button
                     onClick={() => document.documentElement.classList.toggle('dark')}
-                    className="px-3 py-1.5 rounded-md bg-[var(--card)] border border-[var(--border)] hover:border-[var(--primary)] font-medium cursor-pointer"
+                    className="h-8 px-3 rounded-md bg-[var(--card)] border border-[var(--border)] hover:border-[var(--primary)] font-medium text-xs cursor-pointer flex items-center justify-center transition-colors"
                   >
                     Toggle Theme
                   </button>
@@ -540,7 +540,7 @@ export const App: React.FC = () => {
                     </div>
                     <button
                       onClick={clearThumbCache}
-                      className="px-3 py-1.5 rounded-md bg-red-950/40 hover:bg-red-900/55 border border-red-500/30 text-white font-medium cursor-pointer flex items-center gap-1.5"
+                      className="h-8 px-3 rounded-md bg-red-950/40 hover:bg-red-900/55 border border-red-500/30 text-white font-medium text-xs cursor-pointer flex items-center gap-1.5 justify-center transition-colors"
                     >
                       <KenneyIcon name="trashcan" size={13} />
                       <span>Purge</span>
@@ -563,11 +563,11 @@ export const App: React.FC = () => {
                         onKeyDown={(e) => {
                           if (e.key === 'Enter') handleApplyMaxCacheSize();
                         }}
-                        className="w-24 bg-[var(--card)] border border-[var(--border)] focus:border-[var(--primary)] rounded-md px-2 py-1 text-right text-[var(--foreground)] outline-none"
+                        className="w-24 h-8 bg-[var(--card)] border border-[var(--border)] focus:border-[var(--primary)] rounded-md px-2 py-1 text-right text-[var(--foreground)] outline-none"
                       />
                       <button
                         onClick={handleApplyMaxCacheSize}
-                        className="px-2.5 py-1 rounded-md bg-[var(--primary)] text-[var(--primary-foreground)] hover:opacity-90 font-medium cursor-pointer"
+                        className="h-8 px-3 rounded-md bg-[var(--primary)] text-[var(--primary-foreground)] hover:opacity-90 font-medium text-xs cursor-pointer flex items-center justify-center transition-colors"
                       >
                         Apply
                       </button>
@@ -605,14 +605,14 @@ export const App: React.FC = () => {
                       <button
                         onClick={rescanCurrentFolderSizes}
                         title="Rescan folder sizes in current directory"
-                        className="px-2.5 py-1.5 rounded-md bg-[var(--card)] border border-[var(--border)] hover:border-[var(--primary)] font-medium cursor-pointer flex items-center gap-1"
+                        className="h-8 px-3 rounded-md bg-[var(--card)] border border-[var(--border)] hover:border-[var(--primary)] font-medium text-xs cursor-pointer flex items-center gap-1.5 justify-center transition-colors"
                       >
                         <KenneyIcon name="return" size={12} />
                         <span>Rescan</span>
                       </button>
                       <button
                         onClick={clearFolderSizeCache}
-                        className="px-3 py-1.5 rounded-md bg-red-950/40 hover:bg-red-900/55 border border-red-500/30 text-white font-medium cursor-pointer flex items-center gap-1.5"
+                        className="h-8 px-3 rounded-md bg-red-950/40 hover:bg-red-900/55 border border-red-500/30 text-white font-medium text-xs cursor-pointer flex items-center gap-1.5 justify-center transition-colors"
                       >
                         <KenneyIcon name="trashcan" size={13} />
                         <span>Purge</span>
@@ -630,7 +630,7 @@ export const App: React.FC = () => {
               <div className="flex justify-end pt-2 border-t border-[var(--border)]">
                 <button
                   onClick={toggleOptionsModal}
-                  className="px-4 py-1.5 rounded-lg bg-[var(--primary)] text-[var(--primary-foreground)] font-medium cursor-pointer"
+                  className="h-8 px-4 rounded-md bg-[var(--primary)] text-[var(--primary-foreground)] hover:opacity-90 font-medium text-xs cursor-pointer flex items-center justify-center transition-colors"
                 >
                   Done
                 </button>
@@ -681,9 +681,9 @@ export const App: React.FC = () => {
                 </div>
                 <button
                   onClick={closePromptModal}
-                  className="p-1 rounded hover:bg-[var(--background)] cursor-pointer"
+                  className="w-7 h-7 rounded-md hover:bg-white/[0.08] flex items-center justify-center cursor-pointer opacity-70 hover:opacity-100 transition-colors"
                 >
-                  <KenneyIcon name="cross" size={12} />
+                  <KenneyIcon name="cross" size={13} />
                 </button>
               </div>
 
@@ -712,13 +712,13 @@ export const App: React.FC = () => {
               <div className="flex items-center justify-end gap-2 pt-2 border-t border-[var(--border)]">
                 <button
                   onClick={closePromptModal}
-                  className="px-3.5 py-1.5 rounded-lg border border-[var(--border)] bg-[var(--background)] font-medium text-[var(--foreground)] hover:opacity-80 cursor-pointer"
+                  className="h-8 px-4 rounded-md border border-[var(--border)] bg-[var(--background)] font-medium text-xs text-[var(--foreground)] hover:opacity-80 cursor-pointer flex items-center justify-center transition-colors"
                 >
                   Cancel (Esc)
                 </button>
                 <button
                   onClick={() => submitPromptModal(promptInput)}
-                  className="px-4 py-1.5 rounded-lg bg-[var(--primary)] text-[var(--primary-foreground)] hover:opacity-90 font-semibold cursor-pointer"
+                  className="h-8 px-4 rounded-md bg-[var(--primary)] text-[var(--primary-foreground)] hover:opacity-90 font-semibold text-xs cursor-pointer flex items-center justify-center transition-colors"
                 >
                   {promptModal.kind === 'rename'
                     ? 'Rename'
@@ -780,13 +780,13 @@ export const App: React.FC = () => {
               <div className="flex items-center justify-end gap-2 pt-2">
                 <button
                   onClick={cancelDeleteSelected}
-                  className="px-3.5 py-1.5 rounded-lg border border-[var(--border)] bg-[var(--background)] text-xs font-medium text-[var(--foreground)] hover:opacity-80 cursor-pointer"
+                  className="h-8 px-4 rounded-md border border-[var(--border)] bg-[var(--background)] text-xs font-medium text-[var(--foreground)] hover:opacity-80 cursor-pointer flex items-center justify-center transition-colors"
                 >
                   Cancel (Esc)
                 </button>
                 <button
                   onClick={confirmDeleteSelected}
-                  className="px-3.5 py-1.5 rounded-lg bg-red-900/60 hover:bg-red-800/80 border border-red-500/40 text-white text-xs font-semibold cursor-pointer flex items-center gap-1.5"
+                  className="h-8 px-4 rounded-md bg-red-900/60 hover:bg-red-800/80 border border-red-500/40 text-white text-xs font-semibold cursor-pointer flex items-center gap-1.5 justify-center transition-colors"
                 >
                   <KenneyIcon name="trashcan" size={14} />
                   <span>{deletePermanently ? 'Delete Permanently' : 'Move to Recycle Bin'}</span>

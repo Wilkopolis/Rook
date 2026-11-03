@@ -386,9 +386,9 @@ export const SidebarPane: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setStyleModalPin(null)}
-                className="w-6 h-6 rounded hover:bg-[var(--card)] flex items-center justify-center text-[var(--muted-foreground)] hover:text-[var(--foreground)] cursor-pointer"
+                className="w-7 h-7 rounded-md hover:bg-white/[0.08] flex items-center justify-center text-[var(--muted-foreground)] hover:text-[var(--foreground)] cursor-pointer transition-colors"
               >
-                <KenneyIcon name="cross" size={12} />
+                <KenneyIcon name="cross" size={13} />
               </button>
             </div>
 
@@ -463,7 +463,7 @@ export const SidebarPane: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setStyleModalPin(null)}
-                className="px-3 py-1.5 rounded-lg bg-[var(--card)] border border-[var(--border)] text-[var(--muted-foreground)] hover:text-[var(--foreground)] cursor-pointer"
+                className="h-8 px-4 rounded-md bg-[var(--card)] border border-[var(--border)] text-xs text-[var(--muted-foreground)] hover:text-[var(--foreground)] cursor-pointer flex items-center justify-center transition-colors"
               >
                 Cancel
               </button>
@@ -473,7 +473,7 @@ export const SidebarPane: React.FC = () => {
                   updatePinnedWorkspaceStyle(styleModalPin.id, selectedIcon, selectedColor);
                   setStyleModalPin(null);
                 }}
-                className="px-3.5 py-1.5 rounded-lg bg-[var(--primary)] text-[var(--primary-foreground)] font-medium hover:opacity-90 cursor-pointer"
+                className="h-8 px-4 rounded-md bg-[var(--primary)] text-[var(--primary-foreground)] text-xs font-medium hover:opacity-90 cursor-pointer flex items-center justify-center transition-colors"
               >
                 Save Icon
               </button>

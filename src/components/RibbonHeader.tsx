@@ -167,16 +167,16 @@ export const RibbonHeader: React.FC = () => {
       <div
         onMouseDown={handleToolbarMouseDown}
         onDoubleClick={handleToolbarDoubleClick}
-        className="bg-[var(--sidebar)] border-b border-[var(--border)] pl-2.5 pr-1 py-[5px] flex flex-wrap items-center justify-between gap-1.5 text-xs cursor-default"
+        className="bg-[var(--sidebar)] border-b border-[var(--border)] px-3 py-1.5 flex items-center justify-between gap-2 text-xs select-none cursor-default"
       >
         {/* Left: Rook Brand + Icon-Only File & Shell Command Buttons */}
-        <div className="flex flex-wrap items-center gap-1">
+        <div className="flex items-center gap-1.5 shrink-0">
           <div
-            className="flex items-center gap-1.5 pr-2 mr-0.5 border-r border-[var(--border)]"
+            className="h-8 flex items-center gap-2 pr-2.5 mr-0.5 border-r border-[var(--border)] shrink-0"
             title="Rook File Explorer — Drag here to move window"
           >
-            <KenneyIcon name="chess_rook" size={17} alt="Rook" />
-            <span className="font-semibold text-[var(--foreground)] tracking-tight text-[13px] leading-none">
+            <KenneyIcon name="chess_rook" size={18} alt="Rook" />
+            <span className="font-semibold text-[var(--foreground)] tracking-tight text-[13px] leading-none select-none">
               Rook
             </span>
           </div>
@@ -184,46 +184,46 @@ export const RibbonHeader: React.FC = () => {
           <button
             onClick={handleNewFolder}
             title="New Folder"
-            className="p-1 rounded bg-[var(--primary)] text-[var(--primary-foreground)] hover:opacity-90 cursor-pointer flex items-center justify-center"
+            className="w-8 h-8 rounded-md bg-[var(--primary)] text-[var(--primary-foreground)] hover:opacity-90 cursor-pointer flex items-center justify-center shrink-0 transition-colors shadow-sm"
           >
-            <KenneyIcon name="pouch_add" size={15} />
+            <KenneyIcon name="pouch_add" size={16} />
           </button>
 
           <button
             onClick={handleNewFile}
             title="New File"
-            className="p-1 rounded bg-[var(--card)] border border-[var(--border)] hover:border-[var(--primary)] cursor-pointer flex items-center justify-center"
+            className="w-8 h-8 rounded-md bg-[var(--card)] border border-[var(--border)] hover:border-[var(--primary)] cursor-pointer flex items-center justify-center shrink-0 transition-colors"
           >
-            <KenneyIcon name="card_add" size={15} />
+            <KenneyIcon name="card_add" size={16} />
           </button>
 
-          <div className="h-4 w-px bg-[var(--border)] mx-0.5" />
+          <div className="h-5 w-px bg-[var(--border)] mx-0.5 shrink-0" />
 
           <button
             onClick={copySelectedToOtherPane}
             disabled={!selectedPath}
             title="Copy Selected to Target Pane (F5)"
-            className="p-1 rounded bg-[var(--card)] border border-[var(--border)] hover:border-[var(--primary)] disabled:opacity-40 cursor-pointer flex items-center justify-center"
+            className="w-8 h-8 rounded-md bg-[var(--card)] border border-[var(--border)] hover:border-[var(--primary)] disabled:opacity-40 cursor-pointer flex items-center justify-center shrink-0 transition-colors"
           >
-            <KenneyIcon name="export" size={15} />
+            <KenneyIcon name="export" size={16} />
           </button>
 
           <button
             onClick={moveSelectedToOtherPane}
             disabled={!selectedPath}
             title="Move Selected to Target Pane (F6)"
-            className="p-1 rounded bg-[var(--card)] border border-[var(--border)] hover:border-[var(--primary)] disabled:opacity-40 cursor-pointer flex items-center justify-center"
+            className="w-8 h-8 rounded-md bg-[var(--card)] border border-[var(--border)] hover:border-[var(--primary)] disabled:opacity-40 cursor-pointer flex items-center justify-center shrink-0 transition-colors"
           >
-            <KenneyIcon name="import" size={15} />
+            <KenneyIcon name="import" size={16} />
           </button>
 
           <button
             onClick={handleRename}
             disabled={!selectedPath}
             title="Rename Selected Item (F2)"
-            className="p-1 rounded bg-[var(--card)] border border-[var(--border)] hover:border-[var(--primary)] disabled:opacity-40 cursor-pointer flex items-center justify-center"
+            className="w-8 h-8 rounded-md bg-[var(--card)] border border-[var(--border)] hover:border-[var(--primary)] disabled:opacity-40 cursor-pointer flex items-center justify-center shrink-0 transition-colors"
           >
-            <KenneyIcon name="toolPencil" size={15} />
+            <KenneyIcon name="toolPencil" size={16} />
           </button>
 
           {/* Delete Button: Subtle muted red tint */}
@@ -231,26 +231,26 @@ export const RibbonHeader: React.FC = () => {
             onClick={(e) => requestDeleteSelected(e.shiftKey)}
             disabled={!selectedPath}
             title="Delete Selected Item (Del = Recycle Bin, Shift+Del = Permanent)"
-            className="p-1 rounded bg-red-950/35 hover:bg-red-900/50 border border-red-500/25 text-white disabled:opacity-40 cursor-pointer flex items-center justify-center"
+            className="w-8 h-8 rounded-md bg-red-950/35 hover:bg-red-900/50 border border-red-500/25 text-white disabled:opacity-40 cursor-pointer flex items-center justify-center shrink-0 transition-colors"
           >
-            <KenneyIcon name="trashcan" size={15} />
+            <KenneyIcon name="trashcan" size={16} />
           </button>
 
-          <div className="h-4 w-px bg-[var(--border)] mx-0.5" />
+          <div className="h-5 w-px bg-[var(--border)] mx-0.5 shrink-0" />
 
           <button
             onClick={openPowershellCurrent}
             title="Launch PowerShell in Current Directory (Ctrl+T)"
-            className="p-1 rounded bg-[var(--card)] border border-[var(--border)] hover:border-[var(--primary)] cursor-pointer flex items-center justify-center"
+            className="w-8 h-8 rounded-md bg-[var(--card)] border border-[var(--border)] hover:border-[var(--primary)] cursor-pointer flex items-center justify-center shrink-0 transition-colors"
           >
-            <KenneyIcon name="campfire" size={15} />
+            <KenneyIcon name="campfire" size={16} />
           </button>
         </div>
 
         {/* Right: 5-Layout Switcher + Sort + Dockable Panes + Options + Window Controls */}
-        <div className="flex flex-wrap items-center gap-1">
+        <div className="flex items-center gap-1.5 shrink-0">
           {/* 5-Layout Switcher Pill */}
-          <div className="flex items-center bg-[var(--background)] p-0.5 rounded-md border border-[var(--border)] gap-0.5">
+          <div className="h-8 flex items-center bg-[var(--background)] p-0.5 rounded-md border border-[var(--border)] gap-0.5 shrink-0">
             {layouts.map((m) => {
               const active = layout === m.id;
               return (
@@ -258,131 +258,131 @@ export const RibbonHeader: React.FC = () => {
                   key={m.id}
                   onClick={() => setLayout(m.id)}
                   title={m.tooltip}
-                  className={`p-1 rounded transition-all flex items-center justify-center cursor-pointer ${
+                  className={`w-7 h-7 rounded transition-all flex items-center justify-center cursor-pointer shrink-0 ${
                     active
                       ? 'bg-[var(--primary)] text-[var(--primary-foreground)]'
-                      : 'text-[var(--muted-foreground)] hover:bg-[var(--card)]'
+                      : 'text-[var(--muted-foreground)] hover:bg-[var(--card)] hover:text-[var(--foreground)]'
                   }`}
                 >
-                  <KenneyIcon name={m.icon} size={14} />
+                  <KenneyIcon name={m.icon} size={15} />
                 </button>
               );
             })}
           </div>
 
           {/* Dockable Pane Toggles + Options Button */}
-          <div className="flex items-center gap-0.5">
+          <div className="flex items-center gap-1 shrink-0">
             <button
               onClick={toggleSidebar}
               title="Toggle Left Sidebar (Ctrl+B)"
-              className={`p-1 rounded border border-[var(--border)] cursor-pointer flex items-center justify-center ${
+              className={`w-8 h-8 rounded-md border cursor-pointer flex items-center justify-center shrink-0 transition-colors ${
                 showSidebar
-                  ? 'bg-[var(--primary)]/25 border-[var(--primary)]'
-                  : 'bg-[var(--background)] opacity-60 hover:opacity-100'
+                  ? 'bg-[var(--primary)]/25 border-[var(--primary)] text-[var(--primary)]'
+                  : 'bg-[var(--card)] border-[var(--border)] opacity-80 hover:opacity-100 hover:border-[var(--primary)]'
               }`}
             >
-              <KenneyIcon name="barsHorizontal" size={15} />
+              <KenneyIcon name="barsHorizontal" size={16} />
             </button>
             <button
               onClick={toggleInspector}
               title="Toggle Inspector Pane (Ctrl+I)"
-              className={`p-1 rounded border border-[var(--border)] cursor-pointer flex items-center justify-center ${
+              className={`w-8 h-8 rounded-md border cursor-pointer flex items-center justify-center shrink-0 transition-colors ${
                 showInspector
-                  ? 'bg-[var(--primary)]/25 border-[var(--primary)]'
-                  : 'bg-[var(--background)] opacity-60 hover:opacity-100'
+                  ? 'bg-[var(--primary)]/25 border-[var(--primary)] text-[var(--primary)]'
+                  : 'bg-[var(--card)] border-[var(--border)] opacity-80 hover:opacity-100 hover:border-[var(--primary)]'
               }`}
             >
-              <KenneyIcon name="information" size={15} />
+              <KenneyIcon name="information" size={16} />
             </button>
             <button
               onClick={toggleTerminal}
               title="Toggle Integrated Terminal Drawer (Ctrl+`)"
-              className={`p-1 rounded border border-[var(--border)] cursor-pointer flex items-center justify-center ${
+              className={`w-8 h-8 rounded-md border cursor-pointer flex items-center justify-center shrink-0 transition-colors ${
                 showTerminal
-                  ? 'bg-[var(--primary)]/25 border-[var(--primary)]'
-                  : 'bg-[var(--background)] opacity-60 hover:opacity-100'
+                  ? 'bg-[var(--primary)]/25 border-[var(--primary)] text-[var(--primary)]'
+                  : 'bg-[var(--card)] border-[var(--border)] opacity-80 hover:opacity-100 hover:border-[var(--primary)]'
               }`}
             >
-              <KenneyIcon name="cpu" size={15} />
+              <KenneyIcon name="cpu" size={16} />
             </button>
 
             <button
               onClick={toggleOptionsModal}
               title="Options & Preferences"
-              className={`p-1 rounded border border-[var(--border)] cursor-pointer flex items-center justify-center ${
+              className={`w-8 h-8 rounded-md border cursor-pointer flex items-center justify-center shrink-0 transition-colors ${
                 showOptionsModal
-                  ? 'bg-[var(--primary)]/25 border-[var(--primary)]'
-                  : 'bg-[var(--background)] opacity-80 hover:opacity-100 hover:border-[var(--primary)]'
+                  ? 'bg-[var(--primary)]/25 border-[var(--primary)] text-[var(--primary)]'
+                  : 'bg-[var(--card)] border-[var(--border)] opacity-80 hover:opacity-100 hover:border-[var(--primary)]'
               }`}
             >
-              <KenneyIcon name="gear" size={15} />
+              <KenneyIcon name="gear" size={16} />
             </button>
           </div>
 
-          <div className="h-4 w-px bg-[var(--border)] mx-0.5" />
+          <div className="h-5 w-px bg-[var(--border)] mx-0.5 shrink-0" />
 
           {/* Window Controls: Minimize, Maximize/Restore, Exit */}
-          <div className="flex items-center gap-0.5">
+          <div className="flex items-center gap-1 shrink-0">
             <button
               onClick={() => fsService.winMinimize()}
               title="Minimize Window"
-              className="px-1.5 py-1 rounded hover:bg-[var(--background)] border border-transparent hover:border-[var(--border)] cursor-pointer flex items-center justify-center opacity-80 hover:opacity-100"
+              className="w-8 h-8 rounded-md hover:bg-[var(--card)] border border-transparent hover:border-[var(--border)] cursor-pointer flex items-center justify-center opacity-80 hover:opacity-100 shrink-0 transition-colors"
             >
-              <KenneyIcon name="minus" size={13} />
+              <KenneyIcon name="minus" size={14} />
             </button>
             <button
               onClick={handleToggleMaximize}
               title={isMaximized ? 'Restore Window' : 'Maximize Window'}
-              className="px-1.5 py-1 rounded hover:bg-[var(--background)] border border-transparent hover:border-[var(--border)] cursor-pointer flex items-center justify-center opacity-80 hover:opacity-100"
+              className="w-8 h-8 rounded-md hover:bg-[var(--card)] border border-transparent hover:border-[var(--border)] cursor-pointer flex items-center justify-center opacity-80 hover:opacity-100 shrink-0 transition-colors"
             >
-              <KenneyIcon name={isMaximized ? 'smaller' : 'larger'} size={13} />
+              <KenneyIcon name={isMaximized ? 'smaller' : 'larger'} size={14} />
             </button>
             <button
               onClick={() => fsService.winClose()}
               title="Exit Rook"
-              className="px-1.5 py-1 rounded hover:bg-red-600/70 border border-transparent hover:border-red-500/60 cursor-pointer flex items-center justify-center opacity-85 hover:opacity-100 transition-colors"
+              className="w-8 h-8 rounded-md hover:bg-red-600 border border-transparent hover:border-red-500 cursor-pointer flex items-center justify-center opacity-85 hover:opacity-100 hover:text-white shrink-0 transition-colors"
             >
-              <KenneyIcon name="cross" size={13} />
+              <KenneyIcon name="cross" size={14} />
             </button>
           </div>
         </div>
       </div>
 
       {/* ROW 2 (BELOW RIBBON, ABOVE TABS): NAVIGATION UI ELEMENT */}
-      <div className="bg-[var(--sidebar)] border-b border-[var(--border)] px-3 py-2 flex items-center justify-between gap-2 text-xs">
-        <div className="flex items-center gap-1 shrink-0">
+      <div className="bg-[var(--sidebar)] border-b border-[var(--border)] px-3 py-1.5 flex items-center justify-between gap-2 text-xs select-none">
+        <div className="flex items-center gap-1.5 shrink-0">
           <button
             onClick={goBack}
-            className="p-1.5 rounded-md bg-[var(--card)] hover:border-[var(--primary)] border border-[var(--border)] cursor-pointer flex items-center justify-center"
+            className="w-8 h-8 rounded-md bg-[var(--card)] hover:border-[var(--primary)] border border-[var(--border)] cursor-pointer flex items-center justify-center shrink-0 transition-colors"
             title="Back (Alt+Left or Mouse Back Button)"
           >
-            <KenneyIcon name="arrowLeft" size={15} />
+            <KenneyIcon name="arrowLeft" size={16} />
           </button>
           <button
             onClick={goForward}
-            className="p-1.5 rounded-md bg-[var(--card)] hover:border-[var(--primary)] border border-[var(--border)] cursor-pointer flex items-center justify-center"
+            className="w-8 h-8 rounded-md bg-[var(--card)] hover:border-[var(--primary)] border border-[var(--border)] cursor-pointer flex items-center justify-center shrink-0 transition-colors"
             title="Forward (Alt+Right or Mouse Forward Button)"
           >
-            <KenneyIcon name="arrowRight" size={15} />
+            <KenneyIcon name="arrowRight" size={16} />
           </button>
           <button
             onClick={goUp}
-            className="p-1.5 rounded-md bg-[var(--card)] hover:border-[var(--primary)] border border-[var(--border)] cursor-pointer flex items-center justify-center"
+            className="w-8 h-8 rounded-md bg-[var(--card)] hover:border-[var(--primary)] border border-[var(--border)] cursor-pointer flex items-center justify-center shrink-0 transition-colors"
             title="Parent Directory (Alt+Up)"
           >
-            <KenneyIcon name="arrowUp" size={15} />
+            <KenneyIcon name="arrowUp" size={16} />
           </button>
           <button
             onClick={refresh}
-            className="p-1.5 rounded-md bg-[var(--card)] hover:border-[var(--primary)] border border-[var(--border)] cursor-pointer flex items-center justify-center"
+            className="w-8 h-8 rounded-md bg-[var(--card)] hover:border-[var(--primary)] border border-[var(--border)] cursor-pointer flex items-center justify-center shrink-0 transition-colors"
             title="Refresh (F5)"
           >
-            <KenneyIcon name="return" size={15} />
+            <KenneyIcon name="return" size={16} />
           </button>
         </div>
 
         {/* Interactive Breadcrumb / Path Omnibar */}
-        <div className="flex-1 min-w-[260px] flex items-center gap-2 bg-[var(--background)] border border-[var(--border)] rounded-lg px-3 py-1.5">
+        <div className="flex-1 min-w-[260px] h-8 flex items-center gap-2 bg-[var(--background)] border border-[var(--border)] rounded-md px-2.5">
           <div
             onClick={() => {
               if (!editingPath) {
@@ -465,7 +465,7 @@ export const RibbonHeader: React.FC = () => {
               setTimeout(() => setCopiedPath(false), 1500);
             }}
             title="Copy Current Directory Path"
-            className="p-1 rounded hover:bg-[var(--card)] text-[var(--muted-foreground)] hover:text-[var(--foreground)] cursor-pointer flex items-center justify-center shrink-0 transition-colors"
+            className="w-6.5 h-6.5 rounded hover:bg-[var(--card)] text-[var(--muted-foreground)] hover:text-[var(--foreground)] cursor-pointer flex items-center justify-center shrink-0 transition-colors"
           >
             <KenneyIcon
               name={copiedPath ? 'checkmark' : 'cards_stack'}
@@ -475,7 +475,7 @@ export const RibbonHeader: React.FC = () => {
           </button>
 
           {/* Instant Filter & Recursive Subfolder Search Box */}
-          <div className="ml-auto flex items-center gap-1.5 border-l border-[var(--border)] pl-2.5 shrink-0">
+          <div className="ml-auto flex items-center gap-1.5 border-l border-[var(--border)] pl-2 shrink-0">
             <KenneyIcon name={deepSearch ? 'zoomIn' : 'zoom'} size={14} className={deepSearch ? 'text-indigo-400' : ''} />
             <input
               value={filterQuery}
@@ -490,17 +490,17 @@ export const RibbonHeader: React.FC = () => {
             {filterQuery && (
               <button
                 onClick={() => setFilterQuery('')}
-                className="cursor-pointer opacity-70 hover:opacity-100"
+                className="w-5 h-5 rounded hover:bg-[var(--card)] flex items-center justify-center cursor-pointer opacity-70 hover:opacity-100 shrink-0 transition-colors"
                 title="Clear filter"
               >
-                <KenneyIcon name="cross" size={12} />
+                <KenneyIcon name="cross" size={11} />
               </button>
             )}
             <button
               type="button"
               onClick={toggleDeepSearch}
               title={deepSearch ? 'Recursive Subfolder Search: ON' : 'Toggle Recursive Subfolder Search'}
-              className={`px-1.5 py-0.5 rounded text-[10px] font-medium border cursor-pointer transition-colors ${
+              className={`h-6 px-2 rounded text-[10px] font-medium border cursor-pointer transition-colors flex items-center justify-center shrink-0 ${
                 deepSearch
                   ? 'bg-indigo-500/25 border-indigo-400/70 text-indigo-300'
                   : 'bg-[var(--card)] border-[var(--border)] text-[var(--muted-foreground)] hover:text-[var(--foreground)]'
@@ -512,7 +512,7 @@ export const RibbonHeader: React.FC = () => {
         </div>
 
         {gitBranch && (
-          <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-[var(--border)] bg-[var(--background)] shrink-0">
+          <div className="flex items-center gap-1.5 px-2.5 h-8 rounded-md border border-[var(--border)] bg-[var(--background)] shrink-0">
             <KenneyIcon name="flag" size={14} />
             <span className="text-[var(--muted-foreground)]">Git:</span>
             <strong className="text-emerald-500">{gitBranch}</strong>
@@ -521,7 +521,7 @@ export const RibbonHeader: React.FC = () => {
       </div>
 
       {/* ROW 3 (BELOW NAVIGATION): FULL-HEIGHT BOX TABS BAR */}
-      <div className="bg-[var(--sidebar)] border-b border-[var(--border)] h-9 px-0 py-0 flex items-stretch overflow-x-auto no-scrollbar text-xs">
+      <div className="bg-[var(--sidebar)] border-b border-[var(--border)] h-9 px-0 py-0 flex items-stretch overflow-x-auto no-scrollbar text-xs select-none">
         {tabs.map((tab) => {
           const isActive = tab.id === activeTabId;
           const isDropOver = dragTarget === `tab:${tab.id}`;
@@ -596,7 +596,7 @@ export const RibbonHeader: React.FC = () => {
                     e.stopPropagation();
                     closeTab(tab.id);
                   }}
-                  className="opacity-60 hover:opacity-100 cursor-pointer flex items-center ml-1"
+                  className="w-5 h-5 rounded hover:bg-white/[0.12] opacity-60 hover:opacity-100 cursor-pointer flex items-center justify-center ml-0.5 shrink-0 transition-colors"
                   title="Close Tab"
                 >
                   <KenneyIcon name="cross" size={11} />
@@ -607,10 +607,10 @@ export const RibbonHeader: React.FC = () => {
         })}
         <button
           onClick={() => addTab()}
-          className="h-full px-3.5 bg-[var(--sidebar)] hover:bg-[var(--card)] border-r border-[var(--border)] flex items-center justify-center cursor-pointer shrink-0"
+          className="h-full w-9 bg-[var(--sidebar)] hover:bg-[var(--card)] border-r border-[var(--border)] flex items-center justify-center cursor-pointer shrink-0 transition-colors"
           title="New Tab"
         >
-          <KenneyIcon name="plusBold" size={13} />
+          <KenneyIcon name="plusBold" size={14} />
         </button>
       </div>
     </header>

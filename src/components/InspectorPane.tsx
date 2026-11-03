@@ -168,7 +168,7 @@ export const InspectorPane: React.FC = () => {
         <div className="pt-3 border-t border-[var(--border)] flex gap-2">
           <button
             onClick={() => navigateTo(selectedItem.path)}
-            className="flex-1 py-1.5 rounded-lg bg-[var(--primary)] text-[var(--primary-foreground)] text-xs font-medium cursor-pointer flex items-center justify-center gap-1.5"
+            className="flex-1 h-8 px-3 rounded-md bg-[var(--primary)] text-[var(--primary-foreground)] text-xs font-medium cursor-pointer flex items-center justify-center gap-1.5 hover:opacity-90 transition-opacity"
           >
             <KenneyIcon name="open" size={14} />
             <span>Open Folder</span>

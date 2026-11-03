@@ -531,22 +531,22 @@ export const TerminalDrawer: React.FC = () => {
           )}
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-1.5 shrink-0">
           {isRunning ? (
             <button
               type="button"
               onClick={handleCancel}
-              className="px-2 py-0.5 rounded bg-red-600/30 hover:bg-red-600/50 text-red-200 border border-red-500/40 text-[10px] cursor-pointer flex items-center gap-1"
+              className="h-7 px-2.5 rounded-md bg-red-600/30 hover:bg-red-600/50 text-red-200 border border-red-500/40 text-xs cursor-pointer flex items-center gap-1.5 transition-colors"
               title="Stop current command (Ctrl+C)"
             >
-              <KenneyIcon name="cross" size={10} />
+              <KenneyIcon name="cross" size={11} />
               <span>Stop</span>
             </button>
           ) : (
             <button
               type="button"
               onClick={handleClear}
-              className="px-1.5 py-0.5 rounded hover:bg-white/[0.08] text-[var(--muted-foreground)] hover:text-[var(--foreground)] text-[10px] cursor-pointer"
+              className="h-7 px-2.5 rounded-md hover:bg-white/[0.08] text-[var(--muted-foreground)] hover:text-[var(--foreground)] text-xs cursor-pointer flex items-center justify-center transition-colors"
               title="Clear terminal output (cls)"
             >
               Clear
@@ -556,20 +556,20 @@ export const TerminalDrawer: React.FC = () => {
           <button
             type="button"
             onClick={() => fsService.openPowershell(currentPath)}
-            className="px-1.5 py-0.5 rounded hover:bg-white/[0.08] text-[var(--muted-foreground)] hover:text-[var(--foreground)] text-[10px] cursor-pointer flex items-center gap-1"
+            className="h-7 px-2.5 rounded-md hover:bg-white/[0.08] text-[var(--muted-foreground)] hover:text-[var(--foreground)] text-xs cursor-pointer flex items-center gap-1.5 transition-colors"
             title="Launch external PowerShell window in current path (Ctrl+T)"
           >
-            <KenneyIcon name="campfire" size={11} />
+            <KenneyIcon name="campfire" size={13} />
             <span className="hidden sm:inline">External</span>
           </button>
 
           <button
             type="button"
             onClick={toggleTerminal}
-            className="p-1 rounded hover:bg-white/[0.08] opacity-70 hover:opacity-100 cursor-pointer flex items-center text-[var(--foreground)]"
+            className="w-7 h-7 rounded-md hover:bg-white/[0.08] opacity-70 hover:opacity-100 cursor-pointer flex items-center justify-center text-[var(--foreground)] transition-colors"
             title="Close Terminal (`)"
           >
-            <KenneyIcon name="cross" size={12} />
+            <KenneyIcon name="cross" size={13} />
           </button>
         </div>
       </div>
