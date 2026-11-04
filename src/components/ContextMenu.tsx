@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useExplorerStore } from '../store/useExplorerStore';
 import { fsService } from '../services/fsService';
 import { KenneyIcon } from './KenneyIcon';
@@ -30,24 +30,61 @@ export const ContextMenu: React.FC = () => {
     refresh,
   } = useExplorerStore();
 
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [coords, setCoords] = useState<{ x: number; y: number } | null>(null);
+
   useEffect(() => {
-    if (!contextMenu) return;
+    if (!contextMenu) {
+      setCoords(null);
+      return;
+    }
     const handleDismiss = () => closeContextMenu();
     window.addEventListener('click', handleDismiss);
     window.addEventListener('scroll', handleDismiss, true);
+    window.addEventListener('resize', handleDismiss);
     return () => {
       window.removeEventListener('click', handleDismiss);
       window.removeEventListener('scroll', handleDismiss, true);
+      window.removeEventListener('resize', handleDismiss);
     };
   }, [contextMenu, closeContextMenu]);
 
+  useLayoutEffect(() => {
+    if (!contextMenu || !menuRef.current) return;
+    const rect = menuRef.current.getBoundingClientRect();
+    const pad = 8;
+    const { x, y } = contextMenu;
+
+    let targetX = x;
+    let targetY = y;
+
+    // Check right boundary: shift left if extending past window edge
+    if (targetX + rect.width > window.innerWidth - pad) {
+      targetX = Math.max(pad, window.innerWidth - rect.width - pad);
+    }
+    targetX = Math.max(pad, targetX);
+
+    // Check bottom boundary: flip upward if space permits, otherwise clamp to bottom
+    if (targetY + rect.height > window.innerHeight - pad) {
+      if (y - rect.height >= pad) {
+        targetY = y - rect.height;
+      } else {
+        targetY = Math.max(pad, window.innerHeight - rect.height - pad);
+      }
+    }
+    targetY = Math.max(pad, targetY);
+
+    setCoords({ x: targetX, y: targetY });
+  }, [contextMenu]);
+
   if (!contextMenu) return null;
 
-  const { x, y, entry } = contextMenu;
-  const menuWidth = 230;
-  const menuHeight = entry ? 330 : 210;
-  const clampedX = Math.min(x, window.innerWidth - menuWidth - 8);
-  const clampedY = Math.min(y, window.innerHeight - menuHeight - 8);
+  const { entry } = contextMenu;
+  const pad = 8;
+  const defaultX = Math.max(pad, Math.min(contextMenu.x, window.innerWidth - 230 - pad));
+  const defaultY = Math.max(pad, Math.min(contextMenu.y, window.innerHeight - 500 - pad));
+  const posX = coords ? coords.x : defaultX;
+  const posY = coords ? coords.y : defaultY;
 
   const handleCopyPath = async (path: string) => {
     try {
@@ -99,10 +136,15 @@ export const ContextMenu: React.FC = () => {
 
   return (
     <div
-      style={{ left: Math.max(8, clampedX), top: Math.max(8, clampedY) }}
+      ref={menuRef}
+      style={{
+        left: posX,
+        top: posY,
+        opacity: coords ? 1 : 0,
+      }}
       onClick={(e) => e.stopPropagation()}
       onContextMenu={(e) => e.preventDefault()}
-      className="fixed z-50 w-56 rounded-xl bg-[var(--sidebar)] border border-[var(--border)] shadow-2xl py-1.5 text-xs text-[var(--foreground)] select-none"
+      className="fixed z-50 w-56 max-h-[calc(100vh-16px)] overflow-y-auto rounded-xl bg-[var(--sidebar)] border border-[var(--border)] shadow-2xl py-1.5 text-xs text-[var(--foreground)] select-none"
     >
       {entry ? (
         <>
@@ -138,7 +180,7 @@ export const ContextMenu: React.FC = () => {
                 }}
                 className="w-full px-3 py-1.5 hover:bg-[var(--primary)]/20 flex items-center gap-2 cursor-pointer text-left"
               >
-                <KenneyIcon name="plus" size={14} />
+                <KenneyIcon name="plusBold" size={13} />
                 <span>Open in New Tab</span>
               </button>
               <button
@@ -148,7 +190,17 @@ export const ContextMenu: React.FC = () => {
                 }}
                 className="w-full px-3 py-1.5 hover:bg-[var(--primary)]/20 flex items-center gap-2 cursor-pointer text-left"
               >
-                <KenneyIcon name="award" size={14} />
+                <KenneyIcon
+                  name={
+                    pinnedFolders.some(
+                      (p) =>
+                        p.path.toLowerCase() === entry.path.replace(/[\\/]+$/, '').toLowerCase()
+                    )
+                      ? 'cross'
+                      : 'plusBold'
+                  }
+                  size={13}
+                />
                 <span>
                   {pinnedFolders.some(
                     (p) =>
@@ -386,7 +438,17 @@ export const ContextMenu: React.FC = () => {
             }}
             className="w-full px-3 py-1.5 hover:bg-[var(--primary)]/20 flex items-center gap-2 cursor-pointer text-left"
           >
-            <KenneyIcon name="award" size={14} />
+            <KenneyIcon
+              name={
+                pinnedFolders.some(
+                  (p) =>
+                    p.path.toLowerCase() === currentPath.replace(/[\\/]+$/, '').toLowerCase()
+                )
+                  ? 'cross'
+                  : 'plusBold'
+              }
+              size={13}
+            />
             <span>
               {pinnedFolders.some(
                 (p) =>

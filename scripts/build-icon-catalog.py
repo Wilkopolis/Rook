@@ -2,6 +2,7 @@ import os
 import re
 
 SVG_DIR = r"D:\Game Tools and Assets\icons\phosphor\SVGs Flat\duotone"
+KENNEY_CHESS_DIR = r"D:\Game Tools and Assets\kenney\Icons\Board Game Icons\Vector\Icons"
 REPO_DIR = r"C:\Projects\Repos\Rook"
 PHOSPHOR_DATA_PATH = os.path.join(REPO_DIR, "src", "components", "phosphorIconsData.ts")
 ICON_CATALOG_PATH = os.path.join(REPO_DIR, "src", "components", "iconCatalog.ts")
@@ -197,7 +198,12 @@ CURATED_CATEGORIES = {
         "label": "Gaming & Chess",
         "icon": "crown",
         "icons": [
+            ("chess_king", "Chess King"),
+            ("chess_queen", "Chess Queen"),
             ("chess_rook", "Chess Rook"),
+            ("chess_bishop", "Chess Bishop"),
+            ("chess_knight", "Chess Knight"),
+            ("chess_pawn", "Chess Pawn"),
             ("crown", "Royal Crown"),
             ("crown-simple", "Simple Crown"),
             ("game-controller", "Gamepad"),
@@ -292,32 +298,48 @@ for cat_id, cat_info in CURATED_CATEGORIES.items():
     for icon_id, icon_label in cat_info["icons"]:
         clean_id = icon_id
         if clean_id not in new_entries:
-            cand_filenames = [
-                f"{icon_id}-duotone.svg",
-                f"{icon_id}.svg",
-            ]
-            svg_content = None
-            for fname in cand_filenames:
-                fpath = os.path.join(SVG_DIR, fname)
-                if os.path.exists(fpath):
-                    with open(fpath, "r", encoding="utf-8") as sf:
-                        svg_content = sf.read()
-                    break
+            if clean_id.startswith("chess_"):
+                kpath = os.path.join(KENNEY_CHESS_DIR, f"{clean_id}.svg")
+                if os.path.exists(kpath):
+                    with open(kpath, "r", encoding="utf-8") as kf:
+                        kcontent = kf.read()
+                    km = re.search(r'd="([^"]+)"', kcontent)
+                    if km:
+                        inner = f'<g transform="translate(128, 121) scale(3.5)"><path d="{km.group(1)}"/></g>'
+                        new_entries[clean_id] = inner
 
-            if svg_content:
-                m = re.search(r"<svg[^>]*>(.*?)</svg>", svg_content, re.DOTALL)
-                if m:
-                    inner = m.group(1).strip()
-                    inner = inner.replace("\n", "").replace("\r", "")
-                    inner = re.sub(r">\s+<", "><", inner)
-                    new_entries[clean_id] = inner
-                    if "-" in clean_id:
-                        camel = re.sub(r"-([a-z])", lambda match: match.group(1).upper(), clean_id)
-                        new_entries[camel] = inner
-                        underscore = clean_id.replace("-", "_")
-                        new_entries[underscore] = inner
-            else:
-                print(f"Warning: icon not found: {icon_id}")
+            if clean_id not in new_entries:
+                cand_filenames = [
+                    f"{icon_id}-duotone.svg",
+                    f"{icon_id}.svg",
+                ]
+                svg_content = None
+                for fname in cand_filenames:
+                    fpath = os.path.join(SVG_DIR, fname)
+                    if os.path.exists(fpath):
+                        with open(fpath, "r", encoding="utf-8") as sf:
+                            svg_content = sf.read()
+                        break
+
+                if svg_content:
+                    m = re.search(r"<svg[^>]*>(.*?)</svg>", svg_content, re.DOTALL)
+                    if m:
+                        inner = m.group(1).strip()
+                        inner = inner.replace("\n", "").replace("\r", "")
+                        inner = re.sub(r">\s+<", "><", inner)
+                        new_entries[clean_id] = inner
+                        if "-" in clean_id:
+                            camel = re.sub(r"-([a-z])", lambda match: match.group(1).upper(), clean_id)
+                            new_entries[camel] = inner
+                            underscore = clean_id.replace("-", "_")
+                            new_entries[underscore] = inner
+                else:
+                    print(f"Warning: icon not found: {icon_id}")
+
+        if clean_id.startswith("chess_") and clean_id in new_entries:
+            pub_svg = os.path.join(REPO_DIR, "public", "icons", "phosphor", f"{clean_id}.svg")
+            with open(pub_svg, "w", encoding="utf-8") as pf:
+                pf.write(f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="currentColor">{new_entries[clean_id]}</svg>')
 
         catalog_items.append({
             "id": clean_id,

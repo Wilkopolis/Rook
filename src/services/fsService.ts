@@ -103,6 +103,21 @@ export const fsService = {
     }
   },
 
+  async getZoom(): Promise<number> {
+    try {
+      const res = await postApi<{ zoom: number }>('getZoom');
+      return res.zoom ?? 1.0;
+    } catch {
+      return 1.0;
+    }
+  },
+
+  async setZoom(zoom: number): Promise<void> {
+    try {
+      await postApi('setZoom', { zoom });
+    } catch {}
+  },
+
   async getThumbStats(): Promise<ThumbCacheStats> {
     try {
       return await postApi<ThumbCacheStats>('thumbStats');

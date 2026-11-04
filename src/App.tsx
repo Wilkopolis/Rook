@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useExplorerStore } from './store/useExplorerStore';
 import { RibbonHeader } from './components/RibbonHeader';
 import { SidebarPane } from './components/SidebarPane';
+import { TabBar } from './components/TabBar';
 import { LayoutsView } from './components/LayoutsView';
 import { InspectorPane } from './components/InspectorPane';
 import { TerminalDrawer } from './components/TerminalDrawer';
@@ -80,6 +81,27 @@ export const App: React.FC = () => {
   const [maxCacheMbInput, setMaxCacheMbInput] = useState<string>('250');
   const [promptInput, setPromptInput] = useState<string>('');
   const promptInputRef = useRef<HTMLInputElement | null>(null);
+  const [currentZoom, setCurrentZoom] = useState<number>(1.0);
+
+  useEffect(() => {
+    fsService.getZoom().then((z) => {
+      if (typeof z === 'number' && z > 0) setCurrentZoom(z);
+    });
+    const handleZoomChange = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail && typeof detail.zoom === 'number') {
+        setCurrentZoom(detail.zoom);
+      }
+    };
+    window.addEventListener('rook-zoom-change', handleZoomChange);
+    return () => window.removeEventListener('rook-zoom-change', handleZoomChange);
+  }, []);
+
+  const handleSetZoom = (z: number) => {
+    const clamped = Math.max(0.25, Math.min(5.0, Math.round(z * 100) / 100));
+    setCurrentZoom(clamped);
+    fsService.setZoom(clamped);
+  };
 
   const visibleItems = useMemo(() => {
     const baseSource =
@@ -472,10 +494,15 @@ export const App: React.FC = () => {
 
         <div className="flex-1 flex overflow-hidden">
           <SidebarPane />
+          <div className="flex-1 flex flex-col overflow-hidden min-w-0">
+            <TabBar />
+            <div className="flex-1 flex overflow-hidden">
           <div className="flex-1 flex overflow-hidden relative z-10 bg-[var(--center-bg)] shadow-[0_0_28px_rgba(0,0,0,0.6)] ring-1 ring-white/[0.04]">
             <LayoutsView />
           </div>
-          <InspectorPane />
+              <InspectorPane />
+            </div>
+          </div>
         </div>
 
         <TerminalDrawer />
@@ -525,6 +552,36 @@ export const App: React.FC = () => {
                     onChange={toggleHiddenFiles}
                     className="w-4 h-4 accent-[var(--primary)] cursor-pointer"
                   />
+                </div>
+
+                <div className="flex items-center justify-between p-2.5 rounded-lg bg-[var(--background)] border border-[var(--border)]">
+                  <div>
+                    <div className="font-medium text-[var(--foreground)]">Interface Zoom</div>
+                    <div className="text-[var(--muted-foreground)]">Saved across sessions (Ctrl + Scroll / +, -, 0)</div>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={() => handleSetZoom(currentZoom - 0.1)}
+                      className="w-7 h-7 rounded-md bg-[var(--card)] border border-[var(--border)] hover:border-[var(--primary)] text-sm font-semibold flex items-center justify-center cursor-pointer transition-colors"
+                      title="Zoom Out (Ctrl -)"
+                    >
+                      -
+                    </button>
+                    <button
+                      onClick={() => handleSetZoom(1.0)}
+                      className="h-7 px-2 rounded-md bg-[var(--card)] border border-[var(--border)] hover:border-[var(--primary)] font-mono text-xs cursor-pointer transition-colors"
+                      title="Reset Zoom to 100% (Ctrl 0)"
+                    >
+                      {Math.round(currentZoom * 100)}%
+                    </button>
+                    <button
+                      onClick={() => handleSetZoom(currentZoom + 0.1)}
+                      className="w-7 h-7 rounded-md bg-[var(--card)] border border-[var(--border)] hover:border-[var(--primary)] text-sm font-semibold flex items-center justify-center cursor-pointer transition-colors"
+                      title="Zoom In (Ctrl +)"
+                    >
+                      +
+                    </button>
+                  </div>
                 </div>
 
                 <div className="p-2.5 rounded-lg bg-[var(--background)] border border-[var(--border)] space-y-2.5">

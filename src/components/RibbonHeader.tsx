@@ -7,8 +7,6 @@ import { handleFileDropToDir, hasFileDragData } from '../utils/dragDrop';
 
 export const RibbonHeader: React.FC = () => {
   const {
-    tabs,
-    activeTabId,
     currentPath,
     gitBranch,
     layout,
@@ -21,10 +19,6 @@ export const RibbonHeader: React.FC = () => {
     showOptionsModal,
     selectedPath,
     items,
-    switchTab,
-    closeTab,
-    addTab,
-    reorderTabs,
     goBack,
     goForward,
     goUp,
@@ -50,7 +44,6 @@ export const RibbonHeader: React.FC = () => {
   const [copiedPath, setCopiedPath] = useState(false);
   const [isMaximized, setIsMaximized] = useState(false);
   const [dragTarget, setDragTarget] = useState<string | null>(null);
-  const [draggingTabId, setDraggingTabId] = useState<string | null>(null);
 
   useEffect(() => {
     const onWinState = (e: Event) => {
@@ -65,13 +58,13 @@ export const RibbonHeader: React.FC = () => {
 
   const pathSegments = currentPath.split(/[\\/]/).filter(Boolean);
   const getCrumbPath = (idx: number) => {
-    const isWindowsDrive = currentPath.includes(':\\');
-    const prefix = isWindowsDrive ? '' : '/';
-    const sep = isWindowsDrive ? '\\' : '/';
+    const isWindowsDrive = /^[a-zA-Z]:[\\/]/.test(currentPath) || currentPath.includes('\\');
+    const prefix = isWindowsDrive ? '' : '\\';
+    const sep = '\\';
     return (
       prefix +
       pathSegments.slice(0, idx + 1).join(sep) +
-      (idx === 0 && isWindowsDrive ? '\\' : '')
+      (idx === 0 && /^[a-zA-Z]:$/i.test(pathSegments[0]) ? '\\' : '')
     );
   };
 
@@ -348,7 +341,7 @@ export const RibbonHeader: React.FC = () => {
         </div>
       </div>
 
-      {/* ROW 2 (BELOW RIBBON, ABOVE TABS): NAVIGATION UI ELEMENT */}
+      {/* ROW 2 (BELOW RIBBON): NAVIGATION & SEARCH BAR */}
       <div className="bg-[var(--sidebar)] border-b border-[var(--border)] px-3 py-1.5 flex items-center justify-between gap-2 text-xs select-none">
         <div className="flex items-center gap-1.5 shrink-0">
           <button
@@ -356,28 +349,28 @@ export const RibbonHeader: React.FC = () => {
             className="w-8 h-8 rounded-md bg-[var(--card)] hover:border-[var(--primary)] border border-[var(--border)] cursor-pointer flex items-center justify-center shrink-0 transition-colors"
             title="Back (Alt+Left or Mouse Back Button)"
           >
-            <KenneyIcon name="arrowLeft" size={16} />
+            <KenneyIcon name="caretLeft" size={16} />
           </button>
           <button
             onClick={goForward}
             className="w-8 h-8 rounded-md bg-[var(--card)] hover:border-[var(--primary)] border border-[var(--border)] cursor-pointer flex items-center justify-center shrink-0 transition-colors"
             title="Forward (Alt+Right or Mouse Forward Button)"
           >
-            <KenneyIcon name="arrowRight" size={16} />
+            <KenneyIcon name="caretRight" size={16} />
           </button>
           <button
             onClick={goUp}
             className="w-8 h-8 rounded-md bg-[var(--card)] hover:border-[var(--primary)] border border-[var(--border)] cursor-pointer flex items-center justify-center shrink-0 transition-colors"
             title="Parent Directory (Alt+Up)"
           >
-            <KenneyIcon name="arrowUp" size={16} />
+            <KenneyIcon name="caretUp" size={16} />
           </button>
           <button
             onClick={refresh}
             className="w-8 h-8 rounded-md bg-[var(--card)] hover:border-[var(--primary)] border border-[var(--border)] cursor-pointer flex items-center justify-center shrink-0 transition-colors"
             title="Refresh (F5)"
           >
-            <KenneyIcon name="return" size={16} />
+            <KenneyIcon name="arrowsClockwise" size={16} />
           </button>
         </div>
 
@@ -386,7 +379,7 @@ export const RibbonHeader: React.FC = () => {
           <div
             onClick={() => {
               if (!editingPath) {
-                setPathInput(currentPath);
+                setPathInput(currentPath.replace(/\//g, '\\'));
                 setEditingPath(true);
               }
             }}
@@ -425,7 +418,7 @@ export const RibbonHeader: React.FC = () => {
                   const isDropOver = dragTarget === `crumb:${crumbPath}`;
                   return (
                     <React.Fragment key={idx}>
-                      {idx > 0 && <span className="text-[var(--muted-foreground)] select-none">/</span>}
+                      {idx > 0 && <span className="text-[var(--muted-foreground)] opacity-40 select-none">\</span>}
                       <span
                         onClick={(e) => {
                           e.stopPropagation();
@@ -441,9 +434,9 @@ export const RibbonHeader: React.FC = () => {
                         onDrop={(e) => handleDropOnPath(e, crumbPath)}
                         className={`cursor-pointer hover:underline whitespace-nowrap px-1 py-0.5 rounded transition-colors ${
                           isDropOver
-                            ? 'bg-indigo-500/25 ring-1 ring-indigo-400 text-[var(--foreground)]'
+                            ? 'bg-sky-500/25 ring-1 ring-sky-400 text-[var(--foreground)]'
                             : idx === pathSegments.length - 1
-                              ? 'font-semibold text-[var(--foreground)]'
+                              ? 'font-semibold text-[var(--foreground)]/85'
                               : 'text-[var(--muted-foreground)] hover:text-[var(--foreground)]'
                         }`}
                       >
@@ -460,7 +453,7 @@ export const RibbonHeader: React.FC = () => {
             type="button"
             onClick={(e) => {
               e.stopPropagation();
-              navigator.clipboard.writeText(currentPath).catch(() => {});
+              navigator.clipboard.writeText(currentPath.replace(/\//g, '\\')).catch(() => {});
               setCopiedPath(true);
               setTimeout(() => setCopiedPath(false), 1500);
             }}
@@ -476,7 +469,7 @@ export const RibbonHeader: React.FC = () => {
 
           {/* Instant Filter & Recursive Subfolder Search Box */}
           <div className="ml-auto flex items-center gap-1.5 border-l border-[var(--border)] pl-2 shrink-0">
-            <KenneyIcon name={deepSearch ? 'zoomIn' : 'zoom'} size={14} className={deepSearch ? 'text-indigo-400' : ''} />
+            <KenneyIcon name={deepSearch ? 'zoomIn' : 'zoom'} size={14} className={deepSearch ? 'text-sky-400' : ''} />
             <input
               value={filterQuery}
               onChange={(e) => setFilterQuery(e.target.value)}
@@ -485,7 +478,7 @@ export const RibbonHeader: React.FC = () => {
               className="bg-transparent text-xs text-[var(--foreground)] outline-none w-36 placeholder:text-[var(--muted-foreground)]"
             />
             {isSearching && (
-              <span className="text-[10px] text-indigo-400 font-mono">...</span>
+              <span className="text-[10px] text-sky-400 font-mono">...</span>
             )}
             {filterQuery && (
               <button
@@ -502,7 +495,7 @@ export const RibbonHeader: React.FC = () => {
               title={deepSearch ? 'Recursive Subfolder Search: ON' : 'Toggle Recursive Subfolder Search'}
               className={`h-6 px-2 rounded text-[10px] font-medium border cursor-pointer transition-colors flex items-center justify-center shrink-0 ${
                 deepSearch
-                  ? 'bg-indigo-500/25 border-indigo-400/70 text-indigo-300'
+                  ? 'bg-sky-500/25 border-sky-400/70 text-sky-300'
                   : 'bg-[var(--card)] border-[var(--border)] text-[var(--muted-foreground)] hover:text-[var(--foreground)]'
               }`}
             >
@@ -520,99 +513,6 @@ export const RibbonHeader: React.FC = () => {
         )}
       </div>
 
-      {/* ROW 3 (BELOW NAVIGATION): FULL-HEIGHT BOX TABS BAR */}
-      <div className="bg-[var(--sidebar)] border-b border-[var(--border)] h-9 px-0 py-0 flex items-stretch overflow-x-auto no-scrollbar text-xs select-none">
-        {tabs.map((tab) => {
-          const isActive = tab.id === activeTabId;
-          const isDropOver = dragTarget === `tab:${tab.id}`;
-          return (
-            <div
-              key={tab.id}
-              draggable={tabs.length > 1}
-              onClick={() => switchTab(tab.id)}
-              onMouseDown={(e) => {
-                if (e.button === 1) {
-                  e.preventDefault();
-                }
-              }}
-              onAuxClick={(e) => {
-                if (e.button === 1 && tabs.length > 1) {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  closeTab(tab.id);
-                }
-              }}
-              onDragStart={(e) => {
-                setDraggingTabId(tab.id);
-                e.dataTransfer.effectAllowed = 'move';
-                e.dataTransfer.setData('application/x-rook-tab-id', tab.id);
-              }}
-              onDragEnd={() => {
-                setDraggingTabId(null);
-                setDragTarget(null);
-              }}
-              onDragOver={(e) => {
-                if (draggingTabId || e.dataTransfer.types.includes('application/x-rook-tab-id')) {
-                  e.preventDefault();
-                  e.dataTransfer.dropEffect = 'move';
-                  if (draggingTabId && draggingTabId !== tab.id) {
-                    reorderTabs(draggingTabId, tab.id);
-                  }
-                  return;
-                }
-                if (!hasFileDragData(e.dataTransfer)) return;
-                e.preventDefault();
-                e.dataTransfer.dropEffect = e.ctrlKey ? 'copy' : 'move';
-                setDragTarget(`tab:${tab.id}`);
-              }}
-              onDragLeave={() => setDragTarget(null)}
-              onDrop={(e) => {
-                const srcTabId = e.dataTransfer.getData('application/x-rook-tab-id');
-                if (srcTabId) {
-                  e.preventDefault();
-                  if (srcTabId !== tab.id) {
-                    reorderTabs(srcTabId, tab.id);
-                  }
-                  setDraggingTabId(null);
-                  return;
-                }
-                handleDropOnPath(e, tab.path);
-              }}
-              className={`h-full px-4 flex items-center gap-2.5 cursor-pointer transition-colors border-r border-[var(--border)] shrink-0 ${
-                draggingTabId === tab.id ? 'opacity-60 ' : ''
-              }${
-                isDropOver
-                  ? 'bg-indigo-500/25 ring-1 ring-inset ring-indigo-400 text-[var(--foreground)]'
-                  : isActive
-                    ? 'bg-[var(--center-bg)] text-[var(--foreground)] font-semibold border-b-2 border-b-[var(--primary)]'
-                    : 'bg-[var(--sidebar)] text-[var(--muted-foreground)] hover:bg-[var(--card)] hover:text-[var(--foreground)]'
-              }`}
-            >
-              <KenneyIcon name={isActive ? 'pouch' : 'book_closed'} size={14} />
-              <span className="max-w-[180px] truncate">{tab.title}</span>
-              {tabs.length > 1 && (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    closeTab(tab.id);
-                  }}
-                  className="w-5 h-5 rounded hover:bg-white/[0.12] opacity-60 hover:opacity-100 cursor-pointer flex items-center justify-center ml-0.5 shrink-0 transition-colors"
-                  title="Close Tab"
-                >
-                  <KenneyIcon name="cross" size={11} />
-                </button>
-              )}
-            </div>
-          );
-        })}
-        <button
-          onClick={() => addTab()}
-          className="h-full w-9 bg-[var(--sidebar)] hover:bg-[var(--card)] border-r border-[var(--border)] flex items-center justify-center cursor-pointer shrink-0 transition-colors"
-          title="New Tab"
-        >
-          <KenneyIcon name="plusBold" size={14} />
-        </button>
-      </div>
     </header>
   );
 };

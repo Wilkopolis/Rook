@@ -250,7 +250,7 @@ export const SidebarPane: React.FC = () => {
             title="Pin Current Folder to Quick Access"
             className="text-[10px] text-[var(--muted-foreground)] hover:text-[var(--foreground)] cursor-pointer flex items-center gap-0.5 shrink-0"
           >
-            <KenneyIcon name="plus" size={10} />
+            <KenneyIcon name="plusBold" size={10} />
             <span>Pin</span>
           </button>
         )}
@@ -388,7 +388,7 @@ export const SidebarPane: React.FC = () => {
                   isDraggingThis
                     ? 'opacity-30'
                     : dragTarget === pin.path
-                      ? 'bg-indigo-500/20 ring-1 ring-indigo-400 text-[var(--foreground)]'
+                      ? 'bg-sky-500/20 ring-1 ring-sky-400 text-[var(--foreground)]'
                       : isActive
                         ? 'bg-[var(--card)] text-[var(--foreground)] font-medium border border-[var(--border)]'
                         : 'text-[var(--muted-foreground)] hover:bg-[var(--card)]/50'
@@ -519,7 +519,7 @@ export const SidebarPane: React.FC = () => {
           const used = Math.max(0, total - free);
           const pct = total > 0 ? Math.min(100, Math.round((used / total) * 100)) : 0;
           const barColor =
-            pct >= 90 ? 'bg-rose-500' : pct >= 75 ? 'bg-amber-400' : 'bg-indigo-400/80';
+            pct >= 90 ? 'bg-rose-500' : pct >= 75 ? 'bg-amber-400' : 'bg-sky-400/80';
 
           return (
             <div
@@ -533,7 +533,7 @@ export const SidebarPane: React.FC = () => {
               {...bindDropTarget(drive)}
               className={`px-2 py-1 rounded cursor-pointer flex flex-col gap-1 ${
                 dragTarget === drive
-                  ? 'bg-indigo-500/20 ring-1 ring-indigo-400 text-[var(--foreground)]'
+                  ? 'bg-sky-500/20 ring-1 ring-sky-400 text-[var(--foreground)]'
                   : currentPath === drive
                     ? 'bg-[var(--card)] text-[var(--foreground)] font-medium border border-[var(--border)]'
                     : 'text-[var(--muted-foreground)] hover:bg-[var(--card)]/50'
@@ -600,7 +600,7 @@ export const SidebarPane: React.FC = () => {
           title="Pin Current Workflow (Saves open folders and layout)"
           className="text-[10px] text-[var(--muted-foreground)] hover:text-[var(--foreground)] cursor-pointer flex items-center gap-0.5 shrink-0"
         >
-          <KenneyIcon name="plus" size={10} />
+          <KenneyIcon name="plusBold" size={10} />
           <span>Pin</span>
         </button>
       </div>
@@ -713,7 +713,7 @@ export const SidebarPane: React.FC = () => {
                   isDraggingThis
                     ? 'opacity-30'
                     : dragTarget === wf.path
-                      ? 'bg-indigo-500/20 ring-1 ring-indigo-400 text-[var(--foreground)]'
+                      ? 'bg-sky-500/20 ring-1 ring-sky-400 text-[var(--foreground)]'
                       : isActive
                         ? 'bg-[var(--card)] text-[var(--foreground)] font-medium border border-[var(--border)]'
                         : 'text-[var(--muted-foreground)] hover:bg-[var(--card)]/50'
@@ -926,7 +926,7 @@ export const SidebarPane: React.FC = () => {
                   <KenneyIcon name={selectedIcon} size={22} color={selectedColor} />
                 </div>
                 <div className="min-w-0">
-                  <div className="font-semibold text-[var(--foreground)] text-sm truncate">
+                  <div className="font-semibold text-[var(--foreground)]/85 text-sm truncate">
                     {styleModalTarget.label}
                   </div>
                   <div className="text-[11px] text-[var(--muted-foreground)] flex items-center gap-1.5 truncate">

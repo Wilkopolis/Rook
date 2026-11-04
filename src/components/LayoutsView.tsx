@@ -346,7 +346,7 @@ export const LayoutsView: React.FC = () => {
         onDragLeave={(e) => handleFolderDragLeave(e, currentPath)}
         onDrop={(e) => handleFolderDrop(e, currentPath)}
         className={`flex-1 flex flex-col bg-[var(--center-bg)] overflow-y-auto relative ${
-          dragTargetDir === currentPath ? 'ring-2 ring-inset ring-indigo-400/70' : ''
+          dragTargetDir === currentPath ? 'ring-2 ring-inset ring-sky-400/70' : ''
         }`}
       >
         <div
@@ -569,7 +569,7 @@ export const LayoutsView: React.FC = () => {
           </div>
         )}
 
-        <div className="divide-y divide-[var(--border)]/50 text-xs">
+        <div className="divide-y divide-[var(--border)]/20 text-xs">
           {filteredItems.map((f) => {
             const isSelected = isEntrySelected(f.path);
             const isCut = isEntryCut(f.path);
@@ -586,20 +586,22 @@ export const LayoutsView: React.FC = () => {
                 onClick={(e) => handleSelectItem(e, f)}
                 onDoubleClick={() => handleOpenItem(f)}
                 onContextMenu={(e) => handleItemContextMenu(e, f)}
-                className={`flex items-center px-4 py-1 cursor-pointer transition-colors ${
+                className={`flex items-center px-4 py-1 cursor-pointer ${
+                  isSelected ? 'transition-none' : 'transition-colors duration-75'
+                } ${
                   isDropTarget
-                    ? 'bg-indigo-500/20 ring-1 ring-inset ring-indigo-400'
+                    ? 'bg-sky-500/20 ring-1 ring-inset ring-sky-400'
                     : isSelected
-                      ? 'bg-white/[0.10] border-l-2 border-l-slate-200 text-[var(--foreground)] font-medium'
+                      ? 'bg-white/[0.12] text-[var(--foreground)] ring-1 ring-inset ring-slate-400/40 dark:ring-white/[0.22]'
                       : f.isDirectory
-                        ? 'bg-white/[0.04] hover:bg-white/[0.08]'
+                        ? 'bg-white/[0.02] hover:bg-white/[0.05]'
                         : 'hover:bg-white/[0.035]'
                 } ${isCut ? 'opacity-50' : ''}`}
               >
                 <div className="flex-1 min-w-[140px] flex items-center gap-2 pr-2">
                   <FileThumbnail entry={f} size={18} />
                   <div className="min-w-0 flex flex-col">
-                    <span className={`truncate ${f.isDirectory ? 'font-medium text-slate-100' : 'text-[var(--foreground)]'}`}>{f.name}</span>
+                    <span className={`truncate ${f.isDirectory ? 'text-[var(--foreground)]/85' : 'text-[var(--foreground)]'}`}>{f.name}</span>
                     {deepSearch && filterQuery.trim() !== '' && (
                       <span className="text-[10px] text-[var(--muted-foreground)] font-mono truncate">
                         {f.path.replace(currentPath, '').replace(/^[\\/]+/, '')}
@@ -667,7 +669,7 @@ export const LayoutsView: React.FC = () => {
 
   // 2. LARGE THUMBNAIL ICONS GRID
   if (layout === 'thumbnails') {
-    const tileMinWidth = Math.max(92, thumbGridSize + 36);
+    const tileMinWidth = Math.max(48, thumbGridSize + 12);
     return (
       <section
         onContextMenu={handleEmptyContextMenu}
@@ -682,7 +684,7 @@ export const LayoutsView: React.FC = () => {
           }
         }}
         className={`flex-1 flex flex-col bg-[var(--center-bg)] overflow-y-auto relative select-none ${
-          dragTargetDir === currentPath ? 'ring-2 ring-inset ring-indigo-400/70' : ''
+          dragTargetDir === currentPath ? 'ring-2 ring-inset ring-sky-400/70' : ''
         }`}
       >
         {/* Sticky Top Toolbar: Sort Controls + Thumbnail Size Slider */}
@@ -760,7 +762,7 @@ export const LayoutsView: React.FC = () => {
           style={{
             gridTemplateColumns: `repeat(auto-fill, minmax(${tileMinWidth}px, 1fr))`,
           }}
-          className="grid gap-2.5 p-4"
+          className="grid gap-1.5 p-3"
         >
           {filteredItems.map((f) => {
             const isSelected = isEntrySelected(f.path);
@@ -779,35 +781,36 @@ export const LayoutsView: React.FC = () => {
                 onDoubleClick={() => handleOpenItem(f)}
                 onContextMenu={(e) => handleItemContextMenu(e, f)}
                 title={`${f.name}${!f.isDirectory ? ` (${formatBytes(f.sizeBytes)})` : ''}`}
-                className={`group rounded-xl p-2.5 flex flex-col items-center gap-2 cursor-pointer transition-all border ${
+                className={`group rounded-lg p-1.5 flex flex-col items-center gap-1 cursor-pointer border ${
+                  isSelected ? 'transition-none' : 'transition-all duration-75'
+                } ${
                   isDropTarget
-                    ? 'bg-indigo-500/20 border-indigo-400 shadow-md'
+                    ? 'bg-sky-500/20 border-sky-400 shadow-md'
                     : isSelected
-                      ? 'bg-white/[0.11] border-slate-300/60 text-[var(--foreground)] shadow-sm'
+                      ? 'bg-white/[0.12] border-slate-300/60 ring-1 ring-inset ring-white/[0.15] text-[var(--foreground)] shadow-sm'
                       : f.isDirectory
-                        ? 'bg-white/[0.04] border-white/[0.06] hover:bg-white/[0.08] hover:border-slate-500/50 shadow-xs'
+                        ? 'bg-white/[0.02] border-white/[0.04] hover:bg-white/[0.05] hover:border-slate-500/40 shadow-xs'
                         : 'bg-transparent border-transparent hover:bg-white/[0.04] hover:border-[var(--border)]/70'
                 } ${isCut ? 'opacity-50' : ''}`}
               >
                 <div
-                  style={{ height: `${thumbGridSize + 12}px` }}
-                  className="w-full flex items-center justify-center overflow-hidden rounded-lg"
+                  style={{ height: `${thumbGridSize}px`, width: '100%' }}
+                  className="flex items-center justify-center overflow-hidden rounded-md"
                 >
                   <FileThumbnail
                     entry={f}
                     size={thumbGridSize}
-                    className="transition-transform duration-150 group-hover:scale-[1.03]"
+                    className="transition-transform duration-150 group-hover:scale-[1.03] max-w-full max-h-full"
                   />
                 </div>
-                <div className="w-full text-center flex flex-col items-center gap-0.5">
-                  <span className={`text-xs leading-snug line-clamp-2 break-all ${f.isDirectory ? 'font-semibold text-slate-100' : 'font-normal text-[var(--foreground)]/90'}`}>
+                <div className="w-full text-center flex flex-col items-center px-0.5 min-w-0">
+                  <span
+                    className={`text-[11px] leading-tight line-clamp-2 break-words font-normal w-full select-none ${
+                      f.isDirectory ? 'text-[var(--foreground)]/85' : 'text-[var(--foreground)]/90'
+                    }`}
+                  >
                     {f.name}
                   </span>
-                  {!f.isDirectory && thumbGridSize >= 72 && (
-                    <span className="text-[10px] font-mono text-[var(--muted-foreground)]">
-                      {formatBytes(f.sizeBytes, false)}
-                    </span>
-                  )}
                 </div>
               </div>
             );
@@ -861,8 +864,8 @@ export const LayoutsView: React.FC = () => {
           onContextMenu={handleEmptyContextMenu}
           className="flex flex-col overflow-hidden"
         >
-          <div className="px-3 py-2 bg-[var(--sidebar)] border-b border-[var(--border)] font-semibold text-[var(--foreground)] truncate">
-            {currentPath.split(/[\\/]/).filter(Boolean).pop() || currentPath} /
+          <div className="px-3 py-2 bg-[var(--sidebar)] border-b border-[var(--border)] font-semibold text-[var(--foreground)]/85 truncate">
+            {currentPath.split(/[\\/]/).filter(Boolean).pop() || currentPath}{' '}<span className="text-[var(--muted-foreground)] opacity-40 select-none">\</span>
           </div>
           <div className="p-1 space-y-0.5 overflow-y-auto flex-1">
             {filteredItems.map((f) => {
@@ -881,19 +884,21 @@ export const LayoutsView: React.FC = () => {
                   onClick={(e) => handleSelectItem(e, f)}
                   onDoubleClick={() => handleOpenItem(f)}
                   onContextMenu={(e) => handleItemContextMenu(e, f)}
-                  className={`px-2.5 py-1 rounded-md cursor-pointer flex justify-between items-center transition-colors ${
+                  className={`px-2.5 py-1 rounded-md cursor-pointer flex justify-between items-center ${
+                    isSelected ? 'transition-none' : 'transition-colors duration-75'
+                  } ${
                     isDropTarget
-                      ? 'bg-indigo-500/20 ring-1 ring-indigo-400'
+                      ? 'bg-sky-500/20 ring-1 ring-sky-400'
                       : isSelected
-                        ? 'bg-slate-600/30 text-[var(--foreground)] font-medium'
+                        ? 'bg-white/[0.12] text-[var(--foreground)] ring-1 ring-inset ring-slate-400/40 dark:ring-white/[0.22]'
                         : f.isDirectory
-                          ? 'bg-white/[0.04] hover:bg-white/[0.08]'
+                          ? 'bg-white/[0.02] hover:bg-white/[0.05]'
                           : 'hover:bg-white/[0.035]'
                   } ${isCut ? 'opacity-50' : ''}`}
                 >
                   <span className="flex items-center gap-2 truncate">
                     <FileThumbnail entry={f} size={18} />
-                    <span className={`truncate ${f.isDirectory ? 'font-medium text-slate-100' : ''}`}>{f.name}</span>
+                    <span className={`truncate ${f.isDirectory ? 'text-[var(--foreground)]/85' : ''}`}>{f.name}</span>
                   </span>
                   <span className="shrink-0 ml-2">
                     {f.isDirectory ? <KenneyIcon name="caretRight" size={12} /> : formatBytes(f.sizeBytes)}
@@ -973,18 +978,18 @@ export const LayoutsView: React.FC = () => {
           onDragLeave={(e) => handleFolderDragLeave(e, currentPath)}
           onDrop={(e) => handleFolderDrop(e, currentPath)}
           className={`flex-1 flex flex-col bg-[var(--center-bg)] overflow-hidden ${
-            dragTargetDir === currentPath ? 'ring-2 ring-inset ring-indigo-400' : ''
+            dragTargetDir === currentPath ? 'ring-2 ring-inset ring-sky-400' : ''
           }`}
         >
           <div className="px-3 py-2 bg-[var(--sidebar)] border-b border-[var(--border)] flex justify-between items-center">
-            <span className="font-mono font-semibold text-[var(--foreground)] truncate">
+            <span className="font-mono font-semibold text-[var(--foreground)]/85 truncate">
               LEFT: {currentPath}
             </span>
             <span className="px-2 py-0.5 rounded bg-slate-700/70 text-[var(--foreground)] text-xs shrink-0">
               SOURCE
             </span>
           </div>
-          <div className="divide-y divide-[var(--border)]/40 flex-1 overflow-y-auto">
+          <div className="divide-y divide-[var(--border)]/20 flex-1 overflow-y-auto">
             {filteredItems.map((f) => {
               const isSelected = isEntrySelected(f.path);
               const isCut = isEntryCut(f.path);
@@ -1001,19 +1006,21 @@ export const LayoutsView: React.FC = () => {
                   onClick={(e) => handleSelectItem(e, f)}
                   onDoubleClick={() => handleOpenItem(f)}
                   onContextMenu={(e) => handleItemContextMenu(e, f)}
-                  className={`px-3 py-1 flex justify-between items-center cursor-pointer transition-colors ${
+                  className={`px-3 py-1 flex justify-between items-center cursor-pointer ${
+                    isSelected ? 'transition-none' : 'transition-colors duration-75'
+                  } ${
                     isDropTarget
-                      ? 'bg-indigo-500/20 ring-1 ring-inset ring-indigo-400'
+                      ? 'bg-sky-500/20 ring-1 ring-inset ring-sky-400'
                       : isSelected
-                        ? 'bg-slate-600/25 font-semibold'
+                        ? 'bg-white/[0.12] text-[var(--foreground)] ring-1 ring-inset ring-slate-400/40 dark:ring-white/[0.22]'
                         : f.isDirectory
-                          ? 'bg-white/[0.04] hover:bg-white/[0.08]'
+                          ? 'bg-white/[0.02] hover:bg-white/[0.05]'
                           : 'hover:bg-white/[0.035]'
                   } ${isCut ? 'opacity-50' : ''}`}
                 >
                   <span className="flex items-center gap-2 truncate">
                     <FileThumbnail entry={f} size={18} />
-                    <span className={`truncate ${f.isDirectory ? 'font-medium text-slate-100' : ''}`}>{f.name}</span>
+                    <span className={`truncate ${f.isDirectory ? 'text-[var(--foreground)]/85' : ''}`}>{f.name}</span>
                   </span>
                   <span className="font-mono text-[var(--muted-foreground)] shrink-0 ml-2">
                     {formatBytes(f.sizeBytes, f.isDirectory)}
@@ -1055,7 +1062,7 @@ export const LayoutsView: React.FC = () => {
           onDragLeave={(e) => handleFolderDragLeave(e, rightPanePath)}
           onDrop={(e) => handleFolderDrop(e, rightPanePath)}
           className={`flex-1 flex flex-col bg-[var(--center-bg)] overflow-hidden ${
-            dragTargetDir === rightPanePath ? 'ring-2 ring-inset ring-indigo-400 bg-indigo-500/10' : ''
+            dragTargetDir === rightPanePath ? 'ring-2 ring-inset ring-sky-400 bg-sky-500/10' : ''
           }`}
         >
           <div className="px-3 py-2 bg-[var(--sidebar)] border-b border-[var(--border)] flex justify-between items-center gap-2">
@@ -1072,7 +1079,7 @@ export const LayoutsView: React.FC = () => {
               </button>
             )}
           </div>
-          <div className="divide-y divide-[var(--border)]/40 flex-1 overflow-y-auto">
+          <div className="divide-y divide-[var(--border)]/20 flex-1 overflow-y-auto">
             {rightPaneItems.map((r) => (
               <div
                 key={r.path}
@@ -1085,15 +1092,15 @@ export const LayoutsView: React.FC = () => {
                 onContextMenu={(e) => handleItemContextMenu(e, r)}
                 className={`px-3 py-1 flex justify-between items-center cursor-pointer transition-colors ${
                   r.isDirectory && dragTargetDir === r.path
-                    ? 'bg-indigo-500/20 ring-1 ring-inset ring-indigo-400'
+                    ? 'bg-sky-500/20 ring-1 ring-inset ring-sky-400'
                     : r.isDirectory
-                      ? 'bg-white/[0.04] hover:bg-white/[0.08]'
+                      ? 'bg-white/[0.02] hover:bg-white/[0.05]'
                       : 'hover:bg-white/[0.035]'
                 }`}
               >
                 <span className="flex items-center gap-2 truncate">
                   <FileThumbnail entry={r} size={18} />
-                  <span className={`truncate ${r.isDirectory ? 'font-medium text-slate-100' : ''}`}>{r.name}</span>
+                  <span className={`truncate ${r.isDirectory ? 'text-[var(--foreground)]/85' : ''}`}>{r.name}</span>
                 </span>
                 <span className="font-mono text-[var(--muted-foreground)] shrink-0 ml-2">
                   {formatBytes(r.sizeBytes, r.isDirectory)}
@@ -1159,13 +1166,15 @@ export const LayoutsView: React.FC = () => {
                 onClick={(e) => handleSelectItem(e, f)}
                 onDoubleClick={() => handleOpenItem(f)}
                 onContextMenu={(e) => handleItemContextMenu(e, f)}
-                className={`p-3.5 rounded-xl border transition-all cursor-pointer flex flex-col justify-between gap-3 ${
+                className={`p-3.5 rounded-xl border cursor-pointer flex flex-col justify-between gap-3 ${
+                  isSelected ? 'transition-none' : 'transition-all duration-75'
+                } ${
                   isDropTarget
-                    ? 'border-indigo-400 bg-indigo-500/20 shadow-md'
+                    ? 'border-sky-400 bg-sky-500/20 shadow-md'
                     : isSelected
-                      ? 'border-slate-500/60 bg-slate-600/20 shadow-sm'
+                      ? 'border-white/[0.30] ring-1 ring-inset ring-white/[0.20] bg-white/[0.12] text-[var(--foreground)] shadow-sm'
                       : f.isDirectory
-                        ? 'border-white/[0.08] bg-white/[0.05] hover:bg-white/[0.08] hover:border-slate-500/60 shadow-xs'
+                        ? 'border-white/[0.05] bg-white/[0.025] hover:bg-white/[0.05] hover:border-slate-500/40 shadow-xs'
                         : 'border-[var(--border)] bg-[var(--background)]/60 hover:border-[var(--muted-foreground)]'
                 } ${isCut ? 'opacity-50' : ''}`}
               >
@@ -1176,7 +1185,7 @@ export const LayoutsView: React.FC = () => {
                   </span>
                 </div>
                 <div>
-                  <div className={`text-sm truncate ${f.isDirectory ? 'font-semibold text-slate-100' : 'font-medium text-[var(--foreground)]'}`} title={f.name}>
+                  <div className={`text-sm truncate font-medium ${f.isDirectory ? 'text-[var(--foreground)]/85' : 'text-[var(--foreground)]'}`} title={f.name}>
                     {f.name}
                   </div>
                   <div className="text-xs text-[var(--muted-foreground)] mt-0.5">
@@ -1236,8 +1245,10 @@ export const LayoutsView: React.FC = () => {
                   onDoubleClick={() => handleOpenItem(f)}
                   onContextMenu={(e) => handleItemContextMenu(e, f)}
                   className={`px-3 py-1 rounded-lg cursor-pointer flex items-center justify-between ${
+                    isSelected ? 'transition-none' : 'transition-colors duration-75'
+                  } ${
                     isSelected
-                      ? 'bg-slate-600/30 text-[var(--foreground)] font-medium'
+                      ? 'bg-white/[0.12] text-[var(--foreground)] ring-1 ring-inset ring-slate-400/40 dark:ring-white/[0.22]'
                       : 'hover:bg-[var(--background)]/70'
                   } ${isCut ? 'opacity-50' : ''}`}
                 >

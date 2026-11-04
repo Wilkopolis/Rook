@@ -586,7 +586,7 @@ export const TerminalDrawer: React.FC = () => {
                   <span className="text-sky-400 select-none">({entry.gitBranch})</span>
                 )}
                 <span className="text-slate-500 select-none">&gt;</span>
-                <span className="font-semibold text-slate-100">{entry.command}</span>
+                <span className="font-semibold text-[var(--foreground)]/85">{entry.command}</span>
               </div>
             )}
 

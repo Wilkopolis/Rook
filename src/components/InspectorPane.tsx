@@ -47,7 +47,7 @@ export const InspectorPane: React.FC = () => {
             <FileThumbnail entry={selectedItem} size={32} />
           </div>
           <div className="min-w-0">
-            <div className="text-sm font-semibold text-[var(--foreground)] truncate" title={selectedItem.name}>
+            <div className="text-sm font-semibold text-[var(--foreground)]/85 truncate" title={selectedItem.name}>
               {selectedItem.name}
             </div>
             <div className="text-xs text-[var(--muted-foreground)]">

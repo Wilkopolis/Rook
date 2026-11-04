@@ -55,7 +55,7 @@ export class ErrorBoundary extends React.Component<{ children: React.ReactNode }
             <button onClick={this.reset} className="h-8 px-3 rounded-md border border-white/20 hover:bg-white/10 cursor-pointer">
               Try again
             </button>
-            <button onClick={this.reload} className="h-8 px-3 rounded-md bg-indigo-500 text-white hover:opacity-90 cursor-pointer">
+            <button onClick={this.reload} className="h-8 px-3 rounded-md bg-[var(--primary)] text-[var(--primary-foreground)] hover:opacity-90 cursor-pointer">
               Reload
             </button>
           </div>

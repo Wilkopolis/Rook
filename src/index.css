@@ -1,5 +1,13 @@
 @import "tailwindcss";
 
+/*
+ * Rook theme: neutral cool slate grays with a vibrant blue accent (blueish version of Bishop).
+ * --primary          solid accent (buttons, selection, active states)
+ * --primary-hover    lighter accent for hover
+ * --primary-subtle   translucent accent for highlights / drop targets
+ * --primary-text     accent for text and borders on dark surfaces
+ * --primary-foreground high-contrast text on primary buttons
+ */
 :root {
   --background: #f1f5f9;
   --center-bg: #f8fafc;
@@ -8,20 +16,34 @@
   --border: #cbd5e1;
   --foreground: #0f172a;
   --muted-foreground: #64748b;
-  --primary: #4f46e5;
+  --primary: #0284c7;
+  --primary-hover: #0369a1;
+  --primary-subtle: rgba(2, 132, 199, 0.12);
+  --primary-text: #0284c7;
   --primary-foreground: #ffffff;
+
+  --scrollbar-track: #e2e8f0;
+  --scrollbar-thumb: #94a3b8;
+  --scrollbar-thumb-hover: #64748b;
 }
 
 html.dark {
-  --background: #10131a;
-  --center-bg: #090b10;
-  --sidebar: #161922;
-  --card: #1f2430;
-  --border: #283040;
+  --background: #11151c;
+  --center-bg: #0b0e14;
+  --sidebar: #161b24;
+  --card: #1f2532;
+  --border: #2a3243;
   --foreground: #e2e8f0;
-  --muted-foreground: #8b95a5;
-  --primary: #4f58b8;
-  --primary-foreground: #f8fafc;
+  --muted-foreground: #8b97a8;
+  --primary: #0284c7;
+  --primary-hover: #0ea5e9;
+  --primary-subtle: rgba(56, 189, 248, 0.16);
+  --primary-text: #38bdf8;
+  --primary-foreground: #ffffff;
+
+  --scrollbar-track: #0b0e14;
+  --scrollbar-thumb: #232a39;
+  --scrollbar-thumb-hover: #333d52;
 }
 
 * {
@@ -32,10 +54,13 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, sans-serif;
 }
 
-/* Darker, bluer scrollbar styling matching the Rook theme */
+::selection {
+  background: var(--primary-subtle);
+}
+
 * {
   scrollbar-width: thin;
-  scrollbar-color: #2b3952 #090b10;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
 }
 
 *::-webkit-scrollbar {
@@ -44,44 +69,37 @@ body {
 }
 
 *::-webkit-scrollbar-track {
-  background: #090b10;
-  border-left: 1px solid #1a2233;
+  background: var(--scrollbar-track);
+  border-left: 1px solid var(--border);
 }
 
 *::-webkit-scrollbar-thumb {
-  background: #24324d;
+  background: var(--scrollbar-thumb);
   border-radius: 5px;
-  border: 2px solid #090b10;
+  border: 2px solid var(--scrollbar-track);
 }
 
 *::-webkit-scrollbar-thumb:hover {
-  background: #364b73;
+  background: var(--scrollbar-thumb-hover);
 }
 
 *::-webkit-scrollbar-thumb:active {
-  background: #4f46e5;
+  background: var(--primary);
 }
 
 *::-webkit-scrollbar-corner {
-  background: #090b10;
+  background: var(--scrollbar-track);
 }
 
-html:not(.dark) * {
-  scrollbar-color: #94a3b8 #e2e8f0;
+/* Native form controls (select dropdowns) follow the theme. */
+select,
+option {
+  color-scheme: dark;
 }
 
-html:not(.dark) *::-webkit-scrollbar-track {
-  background: #e2e8f0;
-  border-left: 1px solid #cbd5e1;
-}
-
-html:not(.dark) *::-webkit-scrollbar-thumb {
-  background: #94a3b8;
-  border: 2px solid #e2e8f0;
-}
-
-html:not(.dark) *::-webkit-scrollbar-thumb:hover {
-  background: #64748b;
+html:not(.dark) select,
+html:not(.dark) option {
+  color-scheme: light;
 }
 
 .no-scrollbar::-webkit-scrollbar {
@@ -90,4 +108,19 @@ html:not(.dark) *::-webkit-scrollbar-thumb:hover {
 .no-scrollbar {
   -ms-overflow-style: none;
   scrollbar-width: none;
+}
+
+/* Focus ring and form accents following Bishop's design */
+@layer base {
+  :focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 1px;
+  }
+
+  input,
+  textarea,
+  select {
+    accent-color: var(--primary);
+    caret-color: var(--primary-text);
+  }
 }

@@ -86,6 +86,7 @@ public class RookWindow : Form
 
     private readonly WebView2 _webView;
     private readonly string _appUrl;
+    private double _savedZoom = 1.0;
     private static readonly string WindowStatePath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "Rook",
@@ -159,6 +160,11 @@ public class RookWindow : Form
             {
                 WindowState = FormWindowState.Maximized;
             }
+
+            if (root.TryGetProperty("zoom", out var zp) && zp.TryGetDouble(out double z) && z >= 0.25 && z <= 5.0)
+            {
+                _savedZoom = z;
+            }
         }
         catch { }
     }
@@ -176,7 +182,8 @@ public class RookWindow : Form
                 top = bounds.Top,
                 width = Math.Max(900, bounds.Width),
                 height = Math.Max(560, bounds.Height),
-                maximized = WindowState == FormWindowState.Maximized
+                maximized = WindowState == FormWindowState.Maximized,
+                zoom = Math.Round((_webView != null && _webView.ZoomFactor >= 0.25 && _webView.ZoomFactor <= 5.0) ? _webView.ZoomFactor : _savedZoom, 4)
             };
             File.WriteAllText(WindowStatePath, JsonSerializer.Serialize(payload));
         }
@@ -280,7 +287,34 @@ public class RookWindow : Form
             };
 
             _webView.ZoomFactorChanged += (_, _) =>
+            {
+                _savedZoom = _webView.ZoomFactor;
                 RookLog.Info("action", $"WebView zoom factor changed to {_webView.ZoomFactor:0.###}");
+
+                SaveWindowBounds();
+                try
+                {
+                    _ = _webView.CoreWebView2?.ExecuteScriptAsync(
+                        $"window.dispatchEvent(new CustomEvent('rook-zoom-change', {{ detail: {{ zoom: {_webView.ZoomFactor.ToString(System.Globalization.CultureInfo.InvariantCulture)} }} }}));"
+                    );
+                }
+                catch { }
+            };
+
+            if (_savedZoom >= 0.25 && _savedZoom <= 5.0 && Math.Abs(_savedZoom - 1.0) > 0.001)
+            {
+                try { _webView.ZoomFactor = _savedZoom; } catch { }
+            }
+
+            _webView.NavigationCompleted += (_, _) =>
+            {
+                if (_savedZoom >= 0.25 && _savedZoom <= 5.0 && Math.Abs(_webView.ZoomFactor - _savedZoom) > 0.001)
+                {
+                    try { _webView.ZoomFactor = _savedZoom; } catch { }
+                }
+            };
+
+
 
             _webView.Source = new Uri(_appUrl);
         }
@@ -488,6 +522,28 @@ public class RookWindow : Form
             return;
         }
         Close();
+    }
+
+    public void SetZoom(double zoom)
+    {
+        if (zoom < 0.25 || zoom > 5.0) return;
+        if (InvokeRequired)
+        {
+            BeginInvoke(new Action(() => SetZoom(zoom)));
+            return;
+        }
+        try
+        {
+            _savedZoom = zoom;
+            if (_webView != null) _webView.ZoomFactor = zoom;
+            SaveWindowBounds();
+        }
+        catch { }
+    }
+
+    public double GetZoom()
+    {
+        return _webView?.ZoomFactor ?? _savedZoom;
     }
 
     protected override void WndProc(ref Message m)
@@ -1323,7 +1379,7 @@ public class Program
     // Requests that are high-frequency, user-paced (window drag/resize block until mouse-up) or the logger itself.
     private static readonly HashSet<string> UntimedActions = new(StringComparer.OrdinalIgnoreCase)
     {
-        "log", "logSettings", "dirVersion", "winDrag", "winResize", "saveUiState", "thumbStats", "folderSizeStats"
+        "log", "logSettings", "dirVersion", "winDrag", "winResize", "saveUiState", "thumbStats", "folderSizeStats", "setZoom", "getZoom"
     };
 
     [STAThread]
@@ -1525,6 +1581,21 @@ public class Program
                 {
                     MainWindow?.CloseWindow();
                     return Results.Json(new { ok = true });
+                }
+
+                if (action == "getZoom")
+                {
+                    double z = MainWindow?.GetZoom() ?? 1.0;
+                    return Results.Json(new { zoom = z });
+                }
+                if (action == "setZoom")
+                {
+                    if (root.TryGetProperty("zoom", out var zProp) && zProp.TryGetDouble(out double z))
+                    {
+                        MainWindow?.SetZoom(z);
+                        return Results.Json(new { ok = true, zoom = z });
+                    }
+                    return Results.BadRequest(new { error = "Invalid zoom" });
                 }
 
                 if (action == "info")
