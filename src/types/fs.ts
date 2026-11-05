@@ -2,6 +2,13 @@ export type LayoutMode = 'workspace' | 'thumbnails' | 'miller' | 'dualpane' | 'f
 
 export type SortField = 'name' | 'modified' | 'size' | 'extension';
 
+/** View style the user picked for one folder. */
+export interface FolderViewStyle {
+  layout: LayoutMode;
+  /** Thumbnail tile size in px, recorded for the thumbnails layout. */
+  thumbSize?: number;
+}
+
 export interface FsEntry {
   name: string;
   path: string;

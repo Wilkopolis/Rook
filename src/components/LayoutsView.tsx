@@ -12,7 +12,6 @@ import { KenneyIcon } from './KenneyIcon';
 import { FileThumbnail } from './FileThumbnail';
 import { handleFileDropToDir, hasFileDragData } from '../utils/dragDrop';
 import { naturalCompare } from '../utils/naturalSort';
-import { logger } from '../services/logger';
 
 export const LayoutsView: React.FC = () => {
   const {
@@ -34,6 +33,8 @@ export const LayoutsView: React.FC = () => {
     sortAsc,
     activeTagFilter,
     showHiddenFiles,
+    thumbGridSize,
+    setThumbGridSize,
     selectEntry,
     openEntry,
     openContextMenu,
@@ -49,24 +50,6 @@ export const LayoutsView: React.FC = () => {
 
   const [dragTargetDir, setDragTargetDir] = useState<string | null>(null);
   const [colMenuPos, setColMenuPos] = useState<{ x: number; y: number } | null>(null);
-  const [thumbGridSize, setThumbGridSize] = useState<number>(() => {
-    try {
-      const saved = Number(localStorage.getItem('rook_thumb_grid_size'));
-      if (saved && saved >= 40 && saved <= 240) return saved;
-    } catch {}
-    return 96;
-  });
-
-  const updateThumbGridSize = (next: number) => {
-    const clamped = Math.max(40, Math.min(240, Math.round(next)));
-    if (clamped !== thumbGridSize) {
-      logger.action('thumbnail size changed', { from: thumbGridSize, to: clamped });
-    }
-    setThumbGridSize(clamped);
-    try {
-      localStorage.setItem('rook_thumb_grid_size', String(clamped));
-    } catch {}
-  };
   const [visibleCols, setVisibleCols] = useState<{
     type: boolean;
     modified: boolean;
@@ -680,7 +663,7 @@ export const LayoutsView: React.FC = () => {
           if (e.ctrlKey || e.metaKey) {
             e.preventDefault();
             const delta = e.deltaY < 0 ? 12 : -12;
-            updateThumbGridSize(thumbGridSize + delta);
+            setThumbGridSize(thumbGridSize + delta);
           }
         }}
         className={`flex-1 flex flex-col bg-[var(--center-bg)] overflow-y-auto relative select-none ${
@@ -722,7 +705,7 @@ export const LayoutsView: React.FC = () => {
             </span>
             <button
               type="button"
-              onClick={() => updateThumbGridSize(thumbGridSize - 12)}
+              onClick={() => setThumbGridSize(thumbGridSize - 12)}
               title="Decrease icon size (or Ctrl + Scroll Down)"
               className="w-5 h-5 rounded flex items-center justify-center bg-[var(--background)] border border-[var(--border)] text-[var(--muted-foreground)] hover:text-[var(--foreground)] hover:border-[var(--primary)] cursor-pointer"
             >
@@ -734,13 +717,13 @@ export const LayoutsView: React.FC = () => {
               max={240}
               step={4}
               value={thumbGridSize}
-              onChange={(e) => updateThumbGridSize(Number(e.target.value))}
+              onChange={(e) => setThumbGridSize(Number(e.target.value))}
               title={`Icon Size: ${thumbGridSize}px (Ctrl + Scroll to zoom)`}
               className="w-28 h-1.5 accent-sky-400 bg-[var(--background)] rounded-lg cursor-pointer"
             />
             <button
               type="button"
-              onClick={() => updateThumbGridSize(thumbGridSize + 12)}
+              onClick={() => setThumbGridSize(thumbGridSize + 12)}
               title="Increase icon size (or Ctrl + Scroll Up)"
               className="w-5 h-5 rounded flex items-center justify-center bg-[var(--background)] border border-[var(--border)] text-[var(--muted-foreground)] hover:text-[var(--foreground)] hover:border-[var(--primary)] cursor-pointer"
             >
@@ -748,7 +731,7 @@ export const LayoutsView: React.FC = () => {
             </button>
             <button
               type="button"
-              onClick={() => updateThumbGridSize(96)}
+              onClick={() => setThumbGridSize(96)}
               title="Click to reset icon size to 96px"
               className="px-1.5 py-0.5 rounded bg-[var(--background)] border border-[var(--border)] font-mono text-[11px] text-[var(--muted-foreground)] hover:text-[var(--foreground)] cursor-pointer min-w-[44px] text-center"
             >

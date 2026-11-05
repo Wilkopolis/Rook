@@ -125,7 +125,7 @@ export const InspectorPane: React.FC = () => {
               <span
                 key={t}
                 onClick={() => {
-                  setLayout('faceted');
+                  setLayout('faceted', { saveForFolder: false });
                   setActiveTagFilter(t);
                 }}
                 className="px-2 py-0.5 rounded-full text-xs bg-[var(--card)] border border-[var(--border)] text-[var(--foreground)] cursor-pointer hover:border-[var(--primary)]"

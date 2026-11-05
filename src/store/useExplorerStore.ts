@@ -3,6 +3,7 @@ import {
   DriveInfoItem,
   ExplorerTab,
   FilePreview,
+  FolderViewStyle,
   FolderSizeStats,
   FsEntry,
   LayoutMode,
@@ -72,6 +73,8 @@ interface ExplorerState {
 
   // Layout & UI Options Ribbon
   layout: LayoutMode;
+  thumbGridSize: number;
+  folderViews: Record<string, FolderViewStyle>;
   sortBy: SortField;
   sortAsc: boolean;
   filterQuery: string;
@@ -155,7 +158,8 @@ interface ExplorerState {
   reorderTabs: (fromId: string, toId: string) => void;
 
   // Layout & Ribbon Actions
-  setLayout: (layout: LayoutMode) => void;
+  setLayout: (layout: LayoutMode, opts?: { saveForFolder?: boolean }) => void;
+  setThumbGridSize: (size: number) => void;
   setSortBy: (field: SortField) => void;
   toggleSortAsc: () => void;
   setFilterQuery: (q: string) => void;
@@ -232,6 +236,41 @@ const savedTags = (): Record<string, string[]> => {
   } catch {
     return {};
   }
+};
+
+const savedThumbGridSize = (): number => {
+  try {
+    const saved = Number(localStorage.getItem('rook_thumb_grid_size'));
+    if (saved && saved >= 40 && saved <= 240) return saved;
+  } catch {}
+  return 96;
+};
+
+const FOLDER_VIEWS_KEY = 'rook_folder_views_v1';
+
+/** Key for `folderViews`. Windows paths are case-insensitive, so one folder gets one key. */
+export const folderViewKey = (path: string) =>
+  path.replace(/[\\/]+/g, '/').replace(/\/$/, '').toLowerCase();
+
+const savedFolderViews = (): Record<string, FolderViewStyle> => {
+  try {
+    return JSON.parse(localStorage.getItem(FOLDER_VIEWS_KEY) || '{}');
+  } catch {
+    return {};
+  }
+};
+
+const persistFolderView = (
+  views: Record<string, FolderViewStyle>,
+  path: string,
+  style: FolderViewStyle
+): Record<string, FolderViewStyle> => {
+  const key = folderViewKey(path);
+  const next = { ...views, [key]: { ...views[key], ...style } };
+  try {
+    localStorage.setItem(FOLDER_VIEWS_KEY, JSON.stringify(next));
+  } catch {}
+  return next;
 };
 
 const sanitizePath = (p: string) =>
@@ -451,6 +490,8 @@ export const useExplorerStore = create<ExplorerState>((set, get) => ({
   promptModal: null,
 
   layout: initialSession.layout ?? 'workspace',
+  thumbGridSize: savedThumbGridSize(),
+  folderViews: savedFolderViews(),
   sortBy: initialSession.sortBy ?? 'name',
   sortAsc: initialSession.sortAsc ?? true,
   filterQuery: '',
@@ -614,6 +655,13 @@ export const useExplorerStore = create<ExplorerState>((set, get) => ({
         };
       });
 
+      // Only on entering a folder: refreshes also land here, and must not undo a
+      // temporary layout such as the Inspector's jump to the tag view.
+      const { currentPath, folderViews } = get();
+      const openedFolder = folderViewKey(res.path) !== folderViewKey(currentPath);
+      const savedView = openedFolder ? folderViews[folderViewKey(res.path)] : undefined;
+
+      // Uses `set`, not setLayout/setThumbGridSize, so restoring never rewrites saved entries.
       set({
         currentPath: res.path,
         parentPath: res.parentPath,
@@ -625,8 +673,10 @@ export const useExplorerStore = create<ExplorerState>((set, get) => ({
         dirVersion: typeof res.version === 'number' ? res.version : get().dirVersion,
         deepSearchResults: null,
         isLoading: false,
+        ...(savedView && { layout: savedView.layout }),
+        ...(openedFolder && { thumbGridSize: savedView?.thumbSize ?? savedThumbGridSize() }),
       });
-      persistSession({ tabs: updatedTabs, activeTabId });
+      persistSession({ tabs: updatedTabs, activeTabId, layout: get().layout });
 
       if (get().deepSearch && get().filterQuery.trim()) {
         get().runDeepSearch(get().filterQuery);
@@ -917,9 +967,29 @@ export const useExplorerStore = create<ExplorerState>((set, get) => ({
     persistSession({ tabs: nextTabs });
   },
 
-  setLayout: (layout) => {
+  setLayout: (layout, opts) => {
+    const { currentPath, folderViews, thumbGridSize } = get();
+    if (currentPath && opts?.saveForFolder !== false) {
+      const style = layout === 'thumbnails' ? { layout, thumbSize: thumbGridSize } : { layout };
+      set({ folderViews: persistFolderView(folderViews, currentPath, style) });
+    }
     set({ layout });
     persistSession({ layout });
+  },
+  setThumbGridSize: (size) => {
+    const clamped = Math.max(40, Math.min(240, Math.round(size)));
+    const { thumbGridSize, currentPath, layout, folderViews } = get();
+    if (clamped === thumbGridSize) return;
+    logger.action('thumbnail size changed', { from: thumbGridSize, to: clamped });
+    try {
+      localStorage.setItem('rook_thumb_grid_size', String(clamped));
+    } catch {}
+    set({
+      thumbGridSize: clamped,
+      folderViews: currentPath
+        ? persistFolderView(folderViews, currentPath, { layout, thumbSize: clamped })
+        : folderViews,
+    });
   },
   setSortBy: (sortBy) => {
     const sortAsc = get().sortBy === sortBy ? !get().sortAsc : true;
@@ -1220,7 +1290,11 @@ export const useExplorerStore = create<ExplorerState>((set, get) => ({
       : restoredTabs[0].id;
     const activeTab = restoredTabs.find((t) => t.id === restoredActiveId) || restoredTabs[0];
 
-    const nextLayout = wf.layout || get().layout;
+    // A folder's saved style beats the workflow's layout, as in normal navigation. Applied
+    // here too because navigateTo skips restore when the workflow opens the folder on screen.
+    const savedView = get().folderViews[folderViewKey(activeTab.path)];
+    const nextLayout = savedView?.layout || wf.layout || get().layout;
+    const nextThumbGridSize = savedView?.thumbSize ?? savedThumbGridSize();
     const nextSortBy = wf.sortBy ?? get().sortBy;
     const nextSortAsc = wf.sortAsc ?? get().sortAsc;
     const nextShowInspector = wf.showInspector ?? get().showInspector;
@@ -1244,6 +1318,7 @@ export const useExplorerStore = create<ExplorerState>((set, get) => ({
       tabs: restoredTabs,
       activeTabId: restoredActiveId,
       layout: nextLayout,
+      thumbGridSize: nextThumbGridSize,
       sortBy: nextSortBy,
       sortAsc: nextSortAsc,
       showInspector: nextShowInspector,
@@ -1265,7 +1340,9 @@ export const useExplorerStore = create<ExplorerState>((set, get) => ({
     });
 
     await get().navigateTo(activeTab.path, false);
-    if (nextLayout === 'dualpane' && wf.rightPanePath) {
+    // Not tied to nextLayout: a saved folder style may have replaced the workflow's dual-pane
+    // layout, and the right pane should still match the session saved above.
+    if (wf.rightPanePath) {
       await get().navigateRightPane(wf.rightPanePath);
     }
   },
