@@ -110,9 +110,9 @@
   - [x] Disk-cached image & shell thumbnail generator (`%LOCALAPPDATA%\Rook\Thumbnails` via GDI+ & Windows `IShellItemImageFactory`) + live media QuickLook
   - [x] Automatic 250 MB LRU thumbnail cache eviction + live Sidebar cache telemetry & one-click clear button
   - [ ] Cold start time < 150ms & Directory load time < 20ms for 10k files
-- [~] **Cross-Platform / OS Integration**
+- [x] **Cross-Platform / OS Integration**
   - [x] Standalone Windows Desktop Executable (`release/Rook.exe` via `npm run build:standalone` / [Program.cs](./desktop-host/Program.cs))
   - [x] Custom Kenney icon skin + `chess_rook` native `.ico` application icon
   - [x] Open files with default Windows application on double-click (`Enter`) + Reveal in Windows Explorer
   - [x] Custom Rook Right-click context menu (`ContextMenu.tsx`) for files, folders, and empty directory space
-  - [ ] Drag-and-drop interoperability with external OS apps
+  - [x] Drag-and-drop interoperability with external OS apps

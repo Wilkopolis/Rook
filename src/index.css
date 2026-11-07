@@ -58,14 +58,11 @@ body {
   background: var(--primary-subtle);
 }
 
-* {
-  scrollbar-width: thin;
-  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
-}
-
+/* Note: do not set scrollbar-width/scrollbar-color on *; in Chromium they
+   override the ::-webkit-scrollbar sizing below. */
 *::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
+  width: var(--scrollbar-size, 16px);
+  height: var(--scrollbar-size, 16px);
 }
 
 *::-webkit-scrollbar-track {
@@ -75,8 +72,8 @@ body {
 
 *::-webkit-scrollbar-thumb {
   background: var(--scrollbar-thumb);
-  border-radius: 5px;
-  border: 2px solid var(--scrollbar-track);
+  border-radius: 8px;
+  border: 3px solid var(--scrollbar-track);
 }
 
 *::-webkit-scrollbar-thumb:hover {

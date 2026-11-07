@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { FsEntry } from '../types/fs';
 import { getFileIconName } from '../utils/format';
 import { KenneyIcon } from './KenneyIcon';
+import { useExplorerStore } from '../store/useExplorerStore';
 
 const THUMB_SUPPORTED_EXTS = new Set([
   'png',
@@ -13,6 +14,7 @@ const THUMB_SUPPORTED_EXTS = new Set([
   'ico',
   'svg',
   'mp4',
+  'webm',
   'mov',
   'mkv',
   'pdf',
@@ -30,6 +32,14 @@ export const FileThumbnail: React.FC<FileThumbnailProps> = ({
   className = '',
 }) => {
   const [failed, setFailed] = useState(false);
+  const override = useExplorerStore((s) =>
+    entry.isDirectory ? undefined : s.extensionIcons[entry.extension.toLowerCase()]
+  );
+
+  // A user-chosen icon for this extension wins over both thumbnails and the built-in icon.
+  if (override) {
+    return <KenneyIcon name={override.icon} size={size} color={override.color} className={className} />;
+  }
 
   const canThumb =
     !entry.isDirectory &&

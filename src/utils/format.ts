@@ -160,6 +160,9 @@ export function getExtensionBadgeClasses(entry: FsEntry): string {
     case '7z':
     case 'rar':
       return 'bg-amber-500/15 text-amber-200 border border-amber-500/30';
+    case 'url':
+    case 'lnk':
+      return 'bg-cyan-500/15 text-cyan-300 border border-cyan-500/30';
     default:
       return 'bg-[var(--background)] text-[var(--foreground)]/85 border border-[var(--border)]';
   }
@@ -253,6 +256,9 @@ export function getFileIconName(entry: FsEntry): string {
     case '7z':
     case 'rar':
       return 'tokens_stack';
+    case 'url':
+    case 'lnk':
+      return 'globe';
     default:
       return 'card';
   }
@@ -266,5 +272,6 @@ export function inferTags(entry: FsEntry, customTags: Record<string, string[]>):
   if (['ts', 'tsx', 'html', 'css'].includes(entry.extension)) inferred.push('ui');
   if (['json', 'toml', 'yaml', 'csproj'].includes(entry.extension)) inferred.push('config');
   if (['md', 'txt', 'svg'].includes(entry.extension)) inferred.push('docs');
+  if (['url', 'lnk'].includes(entry.extension.toLowerCase())) inferred.push('link');
   return Array.from(new Set([...saved, ...inferred]));
 }

@@ -17,6 +17,7 @@ import {
 import { fsService } from '../services/fsService';
 import { logger } from '../services/logger';
 import { inferTags } from '../utils/format';
+import { generateUrlShortcutName, buildInternetShortcutContent } from '../utils/dragDrop';
 
 export type UndoOperation =
   | { kind: 'rename'; currentPath: string; oldName: string }
@@ -160,6 +161,10 @@ interface ExplorerState {
   // Layout & Ribbon Actions
   setLayout: (layout: LayoutMode, opts?: { saveForFolder?: boolean }) => void;
   setThumbGridSize: (size: number) => void;
+  /** User overrides of the icon (and tint) shown per file extension, keyed by lowercase extension without dot. */
+  extensionIcons: Record<string, ExtensionIconStyle>;
+  setExtensionIcon: (ext: string, icon: string, color: string) => void;
+  resetExtensionIcon: (ext: string) => void;
   setSortBy: (field: SortField) => void;
   toggleSortAsc: () => void;
   setFilterQuery: (q: string) => void;
@@ -185,6 +190,8 @@ interface ExplorerState {
   copySelectedToOtherPane: () => Promise<void>;
   moveSelectedToOtherPane: () => Promise<void>;
   dropEntriesToDir: (sourcePaths: string[], targetDir: string, copy?: boolean) => Promise<void>;
+  dropUrlToDir: (url: string, targetDir?: string, title?: string) => Promise<string | null>;
+  lastDroppedUrl: { url: string; targetDir: string; title?: string; createdPath?: string } | null;
   compressSelectedToZip: () => Promise<void>;
   extractZipArchive: (zipPath: string) => Promise<void>;
   openPowershellCurrent: () => Promise<void>;
@@ -236,6 +243,36 @@ const savedTags = (): Record<string, string[]> => {
   } catch {
     return {};
   }
+};
+
+export interface ExtensionIconStyle {
+  icon: string;
+  color: string;
+}
+
+const EXTENSION_ICONS_KEY = 'rook_extension_icons_v1';
+
+const savedExtensionIcons = (): Record<string, ExtensionIconStyle> => {
+  try {
+    const raw = JSON.parse(localStorage.getItem(EXTENSION_ICONS_KEY) || '{}');
+    const out: Record<string, ExtensionIconStyle> = {};
+    if (raw && typeof raw === 'object') {
+      for (const [ext, v] of Object.entries(raw as Record<string, any>)) {
+        if (v && typeof v.icon === 'string' && typeof v.color === 'string') {
+          out[ext] = { icon: v.icon, color: v.color };
+        }
+      }
+    }
+    return out;
+  } catch {
+    return {};
+  }
+};
+
+const persistExtensionIcons = (map: Record<string, ExtensionIconStyle>) => {
+  try {
+    localStorage.setItem(EXTENSION_ICONS_KEY, JSON.stringify(map));
+  } catch {}
 };
 
 const savedThumbGridSize = (): number => {
@@ -473,6 +510,7 @@ export const useExplorerStore = create<ExplorerState>((set, get) => ({
   isLoading: false,
   error: null,
   statusMessage: null,
+  lastDroppedUrl: null,
 
   rightPanePath: '',
   rightPaneItems: [],
@@ -491,6 +529,7 @@ export const useExplorerStore = create<ExplorerState>((set, get) => ({
 
   layout: initialSession.layout ?? 'workspace',
   thumbGridSize: savedThumbGridSize(),
+  extensionIcons: savedExtensionIcons(),
   folderViews: savedFolderViews(),
   sortBy: initialSession.sortBy ?? 'name',
   sortAsc: initialSession.sortAsc ?? true,
@@ -975,6 +1014,19 @@ export const useExplorerStore = create<ExplorerState>((set, get) => ({
     }
     set({ layout });
     persistSession({ layout });
+  },
+  setExtensionIcon: (ext, icon, color) => {
+    const key = ext.trim().replace(/^\.+/, '').toLowerCase();
+    if (!key) return;
+    const next = { ...get().extensionIcons, [key]: { icon, color } };
+    set({ extensionIcons: next });
+    persistExtensionIcons(next);
+  },
+  resetExtensionIcon: (ext) => {
+    const key = ext.trim().replace(/^\.+/, '').toLowerCase();
+    const { [key]: _removed, ...rest } = get().extensionIcons;
+    set({ extensionIcons: rest });
+    persistExtensionIcons(rest);
   },
   setThumbGridSize: (size) => {
     const clamped = Math.max(40, Math.min(240, Math.round(size)));
@@ -1608,6 +1660,88 @@ export const useExplorerStore = create<ExplorerState>((set, get) => ({
       });
     }
     await get().refresh();
+  },
+
+  dropUrlToDir: async (url: string, targetDir?: string, title?: string): Promise<string | null> => {
+    logger.action('dropUrlToDir', { url, targetDir, title });
+    const { currentPath, undoStack } = get();
+    const destDir = targetDir || currentPath;
+    if (!destDir || !url) return null;
+
+    try {
+      const baseName = generateUrlShortcutName(url, title);
+      const content = buildInternetShortcutContent(url);
+
+      const existingNames = new Set<string>();
+      if (destDir.toLowerCase() === currentPath.toLowerCase()) {
+        for (const item of get().items) {
+          existingNames.add(item.name.toLowerCase());
+        }
+      } else {
+        try {
+          const dir = await fsService.listDirectory(destDir, false);
+          for (const item of dir.items) {
+            existingNames.add(item.name.toLowerCase());
+          }
+        } catch {}
+      }
+
+      let fileName = `${baseName}.url`;
+      let counter = 2;
+      while (existingNames.has(fileName.toLowerCase())) {
+        fileName = `${baseName} (${counter}).url`;
+        counter++;
+      }
+
+      let res: { ok: boolean; path: string } | null = null;
+      for (let attempt = 0; attempt < 50; attempt++) {
+        try {
+          res = await fsService.createFile(destDir, fileName, content);
+          break;
+        } catch (err: any) {
+          const msg = String(err?.message || '');
+          if (msg.includes('EEXIST') || msg.includes('already exists')) {
+            fileName = `${baseName} (${counter}).url`;
+            counter++;
+            continue;
+          }
+          throw err;
+        }
+      }
+
+      if (!res || !res.path) {
+        throw new Error(`Failed to create shortcut "${fileName}"`);
+      }
+
+      const createdPath = res.path;
+      const isCurrent = destDir.toLowerCase() === (get().currentPath || '').toLowerCase();
+      const dirName = destDir.split(/[\\/]/).filter(Boolean).pop() || destDir;
+      const status = isCurrent
+        ? `Created shortcut "${fileName}"`
+        : `Created shortcut "${fileName}" in "${dirName}"`;
+
+      set({
+        lastDroppedUrl: { url, targetDir: destDir, title, createdPath },
+        undoStack: [...undoStack, { kind: 'create', createdPath }],
+        statusMessage: status,
+      });
+
+      await get().refresh();
+
+      if (isCurrent) {
+        set({ selectedPath: createdPath, selectedPaths: [createdPath] });
+      }
+
+      return createdPath;
+    } catch (err: any) {
+      logger.error('dropUrlToDir failed', err);
+      const errMsg = err?.message || 'Failed to create shortcut file';
+      set({
+        error: errMsg,
+        statusMessage: `Failed to create shortcut: ${errMsg}`,
+      });
+      return null;
+    }
   },
 
   openPowershellCurrent: async () => {

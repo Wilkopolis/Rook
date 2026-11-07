@@ -10,7 +10,7 @@ import {
 } from '../utils/format';
 import { KenneyIcon } from './KenneyIcon';
 import { FileThumbnail } from './FileThumbnail';
-import { handleFileDropToDir, hasFileDragData } from '../utils/dragDrop';
+import { handleFileDropToDir, hasFileDragData, setAppropriateDropEffect } from '../utils/dragDrop';
 import { naturalCompare } from '../utils/naturalSort';
 
 export const LayoutsView: React.FC = () => {
@@ -46,6 +46,7 @@ export const LayoutsView: React.FC = () => {
     copySelectedToOtherPane,
     moveSelectedToOtherPane,
     dropEntriesToDir,
+    dropUrlToDir,
   } = useExplorerStore();
 
   const [dragTargetDir, setDragTargetDir] = useState<string | null>(null);
@@ -291,7 +292,7 @@ export const LayoutsView: React.FC = () => {
     if (!hasFileDragData(e.dataTransfer)) return;
     e.preventDefault();
     e.stopPropagation();
-    e.dataTransfer.dropEffect = e.ctrlKey ? 'copy' : 'move';
+    setAppropriateDropEffect(e.dataTransfer, e.ctrlKey);
     if (dragTargetDir !== folderPath) {
       setDragTargetDir(folderPath);
     }
@@ -306,7 +307,7 @@ export const LayoutsView: React.FC = () => {
 
   const handleFolderDrop = async (e: React.DragEvent, folderPath: string) => {
     setDragTargetDir(null);
-    await handleFileDropToDir(e, folderPath, dropEntriesToDir);
+    await handleFileDropToDir(e, folderPath, dropEntriesToDir, dropUrlToDir);
   };
 
   const renderSortIcon = (field: SortField) => {
@@ -653,8 +654,11 @@ export const LayoutsView: React.FC = () => {
   // 2. LARGE THUMBNAIL ICONS GRID
   if (layout === 'thumbnails') {
     const tileMinWidth = Math.max(48, thumbGridSize + 12);
+    // Scrollbar scales with the Ctrl+Scroll icon size (96px = default 16px bar).
+    const scrollbarSize = Math.round(Math.min(32, Math.max(10, (16 * thumbGridSize) / 96)));
     return (
       <section
+        style={{ '--scrollbar-size': `${scrollbarSize}px` } as React.CSSProperties}
         onContextMenu={handleEmptyContextMenu}
         onDragOver={(e) => handleFolderDragOver(e, currentPath)}
         onDragLeave={(e) => handleFolderDragLeave(e, currentPath)}

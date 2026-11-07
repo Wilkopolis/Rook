@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useExplorerStore } from '../store/useExplorerStore';
 import { KenneyIcon } from './KenneyIcon';
-import { handleFileDropToDir, hasFileDragData } from '../utils/dragDrop';
+import { handleFileDropToDir, hasFileDragData, setAppropriateDropEffect } from '../utils/dragDrop';
 
 export const TabBar: React.FC = () => {
   const {
@@ -12,6 +12,7 @@ export const TabBar: React.FC = () => {
     addTab,
     reorderTabs,
     dropEntriesToDir,
+    dropUrlToDir,
   } = useExplorerStore();
 
   const [draggingTabId, setDraggingTabId] = useState<string | null>(null);
@@ -19,7 +20,7 @@ export const TabBar: React.FC = () => {
 
   const handleDropOnPath = async (e: React.DragEvent, targetDir: string) => {
     setDragTarget(null);
-    await handleFileDropToDir(e, targetDir, dropEntriesToDir);
+    await handleFileDropToDir(e, targetDir, dropEntriesToDir, dropUrlToDir);
   };
 
   return (
@@ -64,7 +65,7 @@ export const TabBar: React.FC = () => {
               }
               if (!hasFileDragData(e.dataTransfer)) return;
               e.preventDefault();
-              e.dataTransfer.dropEffect = e.ctrlKey ? 'copy' : 'move';
+              setAppropriateDropEffect(e.dataTransfer, e.ctrlKey);
               setDragTarget(`tab:${tab.id}`);
             }}
             onDragLeave={() => setDragTarget(null)}

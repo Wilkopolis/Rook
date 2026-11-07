@@ -1,9 +1,9 @@
-import React, { useState, useMemo } from 'react';
+﻿import React, { useState, useMemo } from 'react';
 import { useExplorerStore } from '../store/useExplorerStore';
 import { formatBytes } from '../utils/format';
 import { KenneyIcon } from './KenneyIcon';
-import { handleFileDropToDir, hasFileDragData } from '../utils/dragDrop';
-import { ICON_CATEGORIES, ICON_CATALOG } from './iconCatalog';
+import { handleFileDropToDir, hasFileDragData, setAppropriateDropEffect } from '../utils/dragDrop';
+import { IconPickerDialog } from './IconPickerDialog';
 import { SidebarSectionId } from '../types/fs';
 
 function reorderList<T extends { id: string }>(
@@ -67,26 +67,6 @@ const SectionDropIndicator: React.FC = () => (
   <div className="h-0.5 w-full bg-sky-400 rounded-full shadow-[0_0_8px_rgba(56,189,248,0.85)] my-1 pointer-events-none transition-all duration-75" />
 );
 
-const QUICK_ACCESS_COLORS = [
-  '#38bdf8', // Sky
-  '#60a5fa', // Blue
-  '#818cf8', // Indigo
-  '#a78bfa', // Violet
-  '#c084fc', // Purple
-  '#e879f9', // Fuchsia
-  '#f472b6', // Pink
-  '#fb7185', // Rose
-  '#f87171', // Red
-  '#fb923c', // Orange
-  '#facc15', // Amber
-  '#fde047', // Yellow
-  '#a3e635', // Lime
-  '#4ade80', // Green
-  '#34d399', // Emerald
-  '#2dd4bf', // Teal
-  '#22d3ee', // Cyan
-  '#94a3b8', // Slate
-];
 
 interface StyleModalTarget {
   kind: 'quickAccess' | 'workflow';
@@ -126,6 +106,7 @@ export const SidebarPane: React.FC = () => {
     reorderQuickAccessFolders,
     reorderWorkflows,
     dropEntriesToDir,
+    dropUrlToDir,
   } = useExplorerStore();
 
   const [dragTarget, setDragTarget] = useState<string | null>(null);
@@ -134,8 +115,6 @@ export const SidebarPane: React.FC = () => {
   const [styleModalTarget, setStyleModalTarget] = useState<StyleModalTarget | null>(null);
   const [selectedIcon, setSelectedIcon] = useState<string>('folder');
   const [selectedColor, setSelectedColor] = useState<string>('#38bdf8');
-  const [iconSearchQuery, setIconSearchQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<string>('all');
 
   // Drag and reorder state
   const [draggingSectionId, setDraggingSectionId] = useState<SidebarSectionId | null>(null);
@@ -170,7 +149,7 @@ export const SidebarPane: React.FC = () => {
     setEditing(null);
   };
 
-  const commitStyleChange = () => {
+  const commitStyleChange = (selectedIcon: string, selectedColor: string) => {
     if (!styleModalTarget) return;
     if (styleModalTarget.kind === 'quickAccess') {
       updateQuickAccessFolderStyle(styleModalTarget.id, selectedIcon, selectedColor);
@@ -180,25 +159,6 @@ export const SidebarPane: React.FC = () => {
     setStyleModalTarget(null);
   };
 
-  const filteredIcons = useMemo(() => {
-    let list = ICON_CATALOG;
-    if (selectedCategory !== 'all') {
-      list = list.filter((item) => item.category === selectedCategory);
-    }
-    const q = iconSearchQuery.trim().toLowerCase();
-    if (q) {
-      list = list.filter(
-        (item) => item.id.toLowerCase().includes(q) || item.label.toLowerCase().includes(q)
-      );
-    }
-    return list;
-  }, [selectedCategory, iconSearchQuery]);
-
-  const activeIconItem = useMemo(
-    () => ICON_CATALOG.find((item) => item.id === selectedIcon),
-    [selectedIcon]
-  );
-
   // Must stay after every hook: an early return above them changes the hook count on toggle (React #300/#310).
   if (!showSidebar) return null;
 
@@ -206,13 +166,13 @@ export const SidebarPane: React.FC = () => {
     onDragOver: (e: React.DragEvent) => {
       if (!hasFileDragData(e.dataTransfer)) return;
       e.preventDefault();
-      e.dataTransfer.dropEffect = e.ctrlKey ? 'copy' : 'move';
+      setAppropriateDropEffect(e.dataTransfer, e.ctrlKey);
       setDragTarget(targetDir);
     },
     onDragLeave: () => setDragTarget(null),
     onDrop: async (e: React.DragEvent) => {
       setDragTarget(null);
-      await handleFileDropToDir(e, targetDir, dropEntriesToDir);
+      await handleFileDropToDir(e, targetDir, dropEntriesToDir, dropUrlToDir);
     },
   });
 
@@ -334,7 +294,7 @@ export const SidebarPane: React.FC = () => {
                   }
                   if (hasFileDragData(e.dataTransfer)) {
                     e.preventDefault();
-                    e.dataTransfer.dropEffect = e.ctrlKey ? 'copy' : 'move';
+                    setAppropriateDropEffect(e.dataTransfer, e.ctrlKey);
                     setDragTarget(pin.path);
                   }
                 }}
@@ -373,7 +333,7 @@ export const SidebarPane: React.FC = () => {
                     return;
                   }
                   setDragTarget(null);
-                  await handleFileDropToDir(e, pin.path, dropEntriesToDir);
+                  await handleFileDropToDir(e, pin.path, dropEntriesToDir, dropUrlToDir);
                 }}
                 onClick={() => {
                   if (!isEditing) navigateTo(pin.path);
@@ -416,8 +376,6 @@ export const SidebarPane: React.FC = () => {
                       });
                       setSelectedIcon(pin.icon || 'folder');
                       setSelectedColor(pin.iconColor || '#38bdf8');
-                      setIconSearchQuery('');
-                      setSelectedCategory('all');
                     }}
                     onDoubleClick={(e) => e.stopPropagation()}
                     title="Click to customize icon & color"
@@ -659,7 +617,7 @@ export const SidebarPane: React.FC = () => {
                   }
                   if (hasFileDragData(e.dataTransfer)) {
                     e.preventDefault();
-                    e.dataTransfer.dropEffect = e.ctrlKey ? 'copy' : 'move';
+                    setAppropriateDropEffect(e.dataTransfer, e.ctrlKey);
                     setDragTarget(wf.path);
                   }
                 }}
@@ -698,7 +656,7 @@ export const SidebarPane: React.FC = () => {
                     return;
                   }
                   setDragTarget(null);
-                  await handleFileDropToDir(e, wf.path, dropEntriesToDir);
+                  await handleFileDropToDir(e, wf.path, dropEntriesToDir, dropUrlToDir);
                 }}
                 onClick={() => {
                   if (!isEditing) loadWorkflow(wf);
@@ -741,8 +699,6 @@ export const SidebarPane: React.FC = () => {
                       });
                       setSelectedIcon(wf.icon || 'crown');
                       setSelectedColor(wf.iconColor || '#38bdf8');
-                      setIconSearchQuery('');
-                      setSelectedCategory('all');
                     }}
                     onDoubleClick={(e) => e.stopPropagation()}
                     title="Click to customize workflow icon & color"
@@ -911,198 +867,14 @@ export const SidebarPane: React.FC = () => {
 
       {/* Expanded Quick Access / Workflow Icon & Color Picker Dialog */}
       {styleModalTarget && (
-        <div
-          onClick={() => setStyleModalTarget(null)}
-          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150"
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-lg rounded-xl bg-[#161922] border border-[var(--border)] shadow-2xl p-4 space-y-3.5 text-xs"
-          >
-            {/* Header + Live Preview */}
-            <div className="flex items-center justify-between border-b border-[var(--border)] pb-3">
-              <div className="flex items-center gap-3 min-w-0">
-                <div className="w-10 h-10 rounded-lg bg-[var(--card)] border border-[var(--border)] flex items-center justify-center shrink-0 shadow-xs">
-                  <KenneyIcon name={selectedIcon} size={22} color={selectedColor} />
-                </div>
-                <div className="min-w-0">
-                  <div className="font-semibold text-[var(--foreground)]/85 text-sm truncate">
-                    {styleModalTarget.label}
-                  </div>
-                  <div className="text-[11px] text-[var(--muted-foreground)] flex items-center gap-1.5 truncate">
-                    <span>Icon:</span>
-                    <span className="text-[var(--foreground)] font-medium">
-                      {activeIconItem?.label || selectedIcon}
-                    </span>
-                    <span className="px-1.5 py-px rounded bg-white/[0.06] text-[9px] font-mono text-[var(--muted-foreground)]">
-                      {selectedIcon}
-                    </span>
-                  </div>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setStyleModalTarget(null)}
-                className="w-7 h-7 rounded-md hover:bg-white/[0.08] flex items-center justify-center text-[var(--muted-foreground)] hover:text-[var(--foreground)] cursor-pointer transition-colors"
-              >
-                <KenneyIcon name="cross" size={13} />
-              </button>
-            </div>
-
-            {/* Icon Search & Filter Section */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">
-                  Select Icon ({filteredIcons.length} available)
-                </span>
-                {iconSearchQuery && (
-                  <span className="text-[10px] text-sky-400 font-mono">
-                    Filtered by &ldquo;{iconSearchQuery}&rdquo;
-                  </span>
-                )}
-              </div>
-
-              {/* Search Bar */}
-              <div className="relative flex items-center">
-                <span className="absolute left-2.5 text-[var(--muted-foreground)] pointer-events-none flex items-center">
-                  <KenneyIcon name="zoom" size={12} />
-                </span>
-                <input
-                  type="text"
-                  placeholder="Search 220+ icons (e.g. cloud, code, git, star, media, heart)..."
-                  value={iconSearchQuery}
-                  onChange={(e) => setIconSearchQuery(e.target.value)}
-                  className="w-full bg-[var(--background)] text-[var(--foreground)] pl-8 pr-7 py-1.5 rounded-lg border border-[var(--border)] text-xs placeholder:text-[var(--muted-foreground)]/60 focus:border-sky-400 outline-none transition-colors"
-                />
-                {iconSearchQuery && (
-                  <button
-                    type="button"
-                    onClick={() => setIconSearchQuery('')}
-                    className="absolute right-2 text-[var(--muted-foreground)] hover:text-[var(--foreground)] cursor-pointer p-0.5 rounded hover:bg-white/[0.08]"
-                  >
-                    <KenneyIcon name="cross" size={10} />
-                  </button>
-                )}
-              </div>
-
-              {/* Category Filter Pills */}
-              <div className="flex items-center gap-1 overflow-x-auto py-0.5 no-scrollbar">
-                {ICON_CATEGORIES.map((cat) => {
-                  const active = selectedCategory === cat.id;
-                  return (
-                    <button
-                      key={cat.id}
-                      type="button"
-                      onClick={() => setSelectedCategory(cat.id)}
-                      className={`px-2.5 py-1 rounded-md text-[10px] font-medium whitespace-nowrap cursor-pointer transition-all flex items-center gap-1.5 shrink-0 ${
-                        active
-                          ? 'bg-sky-500 text-white shadow-xs font-semibold'
-                          : 'bg-white/[0.04] text-[var(--muted-foreground)] hover:bg-white/[0.08] hover:text-[var(--foreground)]'
-                      }`}
-                    >
-                      <KenneyIcon name={cat.icon} size={11} />
-                      <span>{cat.label}</span>
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* Scrollable Icon Grid (8 columns) */}
-              <div className="grid grid-cols-8 gap-1.5 bg-[var(--background)]/70 p-2 rounded-lg border border-[var(--border)]/70 max-h-48 overflow-y-auto">
-                {filteredIcons.map((item) => {
-                  const active = selectedIcon === item.id;
-                  return (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => setSelectedIcon(item.id)}
-                      title={`${item.label} (${item.id})`}
-                      className={`h-8 rounded-md flex items-center justify-center cursor-pointer transition-all ${
-                        active
-                          ? 'bg-sky-500/25 ring-2 ring-sky-400 scale-105'
-                          : 'hover:bg-[var(--card)] hover:scale-105 opacity-80 hover:opacity-100'
-                      }`}
-                    >
-                      <KenneyIcon
-                        name={item.id}
-                        size={16}
-                        color={active ? selectedColor : '#cbd5e1'}
-                      />
-                    </button>
-                  );
-                })}
-                {filteredIcons.length === 0 && (
-                  <div className="col-span-8 py-8 text-center text-xs text-[var(--muted-foreground)] space-y-1">
-                    <div>No icons match &ldquo;{iconSearchQuery}&rdquo;</div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIconSearchQuery('');
-                        setSelectedCategory('all');
-                      }}
-                      className="text-sky-400 hover:underline cursor-pointer text-[11px]"
-                    >
-                      Reset filters
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Color Swatches */}
-            <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">
-                  Color Tint
-                </span>
-                <label className="flex items-center gap-1.5 text-[11px] text-[var(--muted-foreground)] hover:text-[var(--foreground)] cursor-pointer">
-                  <span>Custom:</span>
-                  <input
-                    type="color"
-                    value={selectedColor}
-                    onChange={(e) => setSelectedColor(e.target.value)}
-                    className="w-5 h-5 rounded border border-[var(--border)] bg-transparent cursor-pointer"
-                  />
-                </label>
-              </div>
-              <div className="grid grid-cols-9 gap-1.5 bg-[var(--background)]/70 p-2 rounded-lg border border-[var(--border)]/70">
-                {QUICK_ACCESS_COLORS.map((hex) => {
-                  const active = selectedColor.toLowerCase() === hex.toLowerCase();
-                  return (
-                    <button
-                      key={hex}
-                      type="button"
-                      onClick={() => setSelectedColor(hex)}
-                      title={hex}
-                      className={`h-6 rounded-md cursor-pointer flex items-center justify-center transition-transform ${
-                        active ? 'ring-2 ring-white scale-110 shadow-xs' : 'hover:scale-105 opacity-85 hover:opacity-100'
-                      }`}
-                      style={{ backgroundColor: hex }}
-                    />
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Actions */}
-            <div className="flex items-center justify-end gap-2 pt-1 border-t border-[var(--border)]">
-              <button
-                type="button"
-                onClick={() => setStyleModalTarget(null)}
-                className="h-8 px-4 rounded-md bg-[var(--card)] border border-[var(--border)] text-xs text-[var(--muted-foreground)] hover:text-[var(--foreground)] cursor-pointer flex items-center justify-center transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={commitStyleChange}
-                className="h-8 px-4 rounded-md bg-[var(--primary)] text-[var(--primary-foreground)] text-xs font-medium hover:opacity-90 cursor-pointer flex items-center justify-center transition-colors"
-              >
-                Save Icon
-              </button>
-            </div>
-          </div>
-        </div>
+        <IconPickerDialog
+          key={styleModalTarget.id}
+          title={styleModalTarget.label}
+          initialIcon={selectedIcon}
+          initialColor={selectedColor}
+          onSave={(icon, color) => commitStyleChange(icon, color)}
+          onClose={() => setStyleModalTarget(null)}
+        />
       )}
     </aside>
   );

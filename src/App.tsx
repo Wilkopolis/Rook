@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useExplorerStore } from './store/useExplorerStore';
 import { RibbonHeader } from './components/RibbonHeader';
 import { SidebarPane } from './components/SidebarPane';
@@ -8,10 +9,11 @@ import { InspectorPane } from './components/InspectorPane';
 import { TerminalDrawer } from './components/TerminalDrawer';
 import { ContextMenu } from './components/ContextMenu';
 import { KenneyIcon } from './components/KenneyIcon';
+import { ExtensionIconMap } from './components/ExtensionIconMap';
 import { formatBytes } from './utils/format';
 import { naturalCompare } from './utils/naturalSort';
 import { fsService } from './services/fsService';
-import { handleFileDropToDir, hasFileDragData } from './utils/dragDrop';
+import { handleFileDropToDir, hasFileDragData, setAppropriateDropEffect } from './utils/dragDrop';
 
 export const App: React.FC = () => {
   const {
@@ -76,10 +78,12 @@ export const App: React.FC = () => {
     confirmDeleteSelected,
     cancelDeleteSelected,
     dropEntriesToDir,
+    dropUrlToDir,
   } = useExplorerStore();
 
   const [maxCacheMbInput, setMaxCacheMbInput] = useState<string>('250');
   const [promptInput, setPromptInput] = useState<string>('');
+  const [settingsCategory, setSettingsCategory] = useState<'appearance' | 'files' | 'storage' | 'diagnostics'>('appearance');
   const promptInputRef = useRef<HTMLInputElement | null>(null);
   const [currentZoom, setCurrentZoom] = useState<number>(1.0);
 
@@ -198,14 +202,14 @@ export const App: React.FC = () => {
       if (hasFileDragData(e.dataTransfer)) {
         e.preventDefault();
         if (e.dataTransfer) {
-          e.dataTransfer.dropEffect = e.ctrlKey ? 'copy' : 'move';
+          setAppropriateDropEffect(e.dataTransfer, e.ctrlKey);
         }
       }
     };
 
     const onWindowDrop = (e: DragEvent) => {
       if (hasFileDragData(e.dataTransfer)) {
-        handleFileDropToDir(e, currentPath, dropEntriesToDir);
+        handleFileDropToDir(e, currentPath, dropEntriesToDir, dropUrlToDir);
       }
     };
 
@@ -223,7 +227,7 @@ export const App: React.FC = () => {
       window.removeEventListener('dragover', onWindowDragOver);
       window.removeEventListener('drop', onWindowDrop);
     };
-  }, [currentPath, dropEntriesToDir, refresh]);
+  }, [currentPath, dropEntriesToDir, dropUrlToDir, refresh]);
 
   // Keyboard & Mouse Side-Button Navigation
   useEffect(() => {
@@ -509,10 +513,18 @@ export const App: React.FC = () => {
         <ContextMenu />
 
         {/* Options & Preferences Modal */}
-        {showOptionsModal && (
-          <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-            <div className="bg-[var(--card)] border border-[var(--border)] rounded-xl shadow-2xl max-w-md w-full p-5 space-y-4 text-xs">
-              <div className="flex items-center justify-between pb-3 border-b border-[var(--border)]">
+        {/* Rendered through a portal on document.body so no ancestor (overflow, transform,
+            stacking context) can clip it; it is sized only against the viewport. */}
+        {showOptionsModal && createPortal(
+          <div
+            data-rook-layer="settings"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Rook Options & Preferences"
+            className="fixed inset-0 bg-black/60 z-[1000] flex items-center justify-center p-2 sm:p-6"
+          >
+            <div className="bg-[var(--card)] border border-[var(--border)] rounded-xl shadow-2xl w-[min(960px,calc(100vw-1rem))] h-[min(760px,calc(100vh-1rem))] sm:w-[min(960px,calc(100vw-3rem))] sm:h-[min(760px,calc(100vh-3rem))] flex flex-col text-xs overflow-hidden">
+              <div className="flex items-center justify-between gap-2 shrink-0 px-4 sm:px-5 pt-4 sm:pt-5 pb-3 border-b border-[var(--border)]">
                 <div className="flex items-center gap-2.5">
                   <KenneyIcon name="gear" size={18} />
                   <h3 className="text-sm font-semibold text-[var(--foreground)]">
@@ -527,8 +539,31 @@ export const App: React.FC = () => {
                 </button>
               </div>
 
-              <div className="space-y-3">
-                <div className="flex items-center justify-between p-2.5 rounded-lg bg-[var(--background)] border border-[var(--border)]">
+              <div className="flex-1 min-h-0 flex flex-col md:flex-row">
+              <nav className="shrink-0 flex md:flex-col gap-1 overflow-x-auto md:overflow-x-hidden md:overflow-y-auto md:w-[clamp(160px,28%,240px)] border-b md:border-b-0 md:border-r border-[var(--border)] p-2 md:p-3" aria-label="Settings categories">
+                {([
+                  ['appearance', 'Appearance'],
+                  ['files', 'Files & Folders'],
+                  ['storage', 'Storage & Cache'],
+                  ['diagnostics', 'Diagnostics'],
+                ] as const).map(([id, label]) => (
+                  <button
+                    key={id}
+                    onClick={() => setSettingsCategory(id)}
+                    aria-current={settingsCategory === id ? 'page' : undefined}
+                    className={`shrink-0 md:w-full text-left px-3 h-8 rounded-md font-medium whitespace-nowrap truncate cursor-pointer transition-colors ${
+                      settingsCategory === id
+                        ? 'bg-[var(--primary)] text-[var(--primary-foreground)]'
+                        : 'text-[var(--foreground)] hover:bg-white/[0.08]'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </nav>
+              <div className="flex-1 min-w-0 min-h-0 overflow-y-auto p-3 sm:p-5 space-y-3">
+                {settingsCategory === 'appearance' && (<>
+                <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 rounded-lg bg-[var(--background)] border border-[var(--border)]">
                   <div>
                     <div className="font-medium text-[var(--foreground)]">Color Theme</div>
                     <div className="text-[var(--muted-foreground)]">Switch between Dark and Light mode</div>
@@ -541,7 +576,10 @@ export const App: React.FC = () => {
                   </button>
                 </div>
 
-                <div className="flex items-center justify-between p-2.5 rounded-lg bg-[var(--background)] border border-[var(--border)]">
+                </>)}
+
+                {settingsCategory === 'files' && (<>
+                <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 rounded-lg bg-[var(--background)] border border-[var(--border)]">
                   <div>
                     <div className="font-medium text-[var(--foreground)]">Show Hidden Dot-Files</div>
                     <div className="text-[var(--muted-foreground)]">Display files starting with "."</div>
@@ -553,8 +591,11 @@ export const App: React.FC = () => {
                     className="w-4 h-4 accent-[var(--primary)] cursor-pointer"
                   />
                 </div>
+                <ExtensionIconMap />
+                </>)}
 
-                <div className="flex items-center justify-between p-2.5 rounded-lg bg-[var(--background)] border border-[var(--border)]">
+                {settingsCategory === 'appearance' && (
+                <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 rounded-lg bg-[var(--background)] border border-[var(--border)]">
                   <div>
                     <div className="font-medium text-[var(--foreground)]">Interface Zoom</div>
                     <div className="text-[var(--muted-foreground)]">Saved across sessions (Ctrl + Scroll / +, -, 0)</div>
@@ -583,7 +624,9 @@ export const App: React.FC = () => {
                     </button>
                   </div>
                 </div>
+                )}
 
+                {settingsCategory === 'storage' && (<>
                 <div className="p-2.5 rounded-lg bg-[var(--background)] border border-[var(--border)] space-y-2.5">
                   <div className="flex items-center justify-between gap-2">
                     <div className="space-y-1">
@@ -687,8 +730,10 @@ export const App: React.FC = () => {
                     </div>
                   )}
                 </div>
+                </>)}
 
                 {/* Diagnostic Logging */}
+                {settingsCategory === 'diagnostics' && (
                 <div className="p-2.5 rounded-lg bg-[var(--background)] border border-[var(--border)] space-y-2.5">
                   <div className="flex items-center justify-between gap-2">
                     <div className="space-y-1">
@@ -721,9 +766,11 @@ export const App: React.FC = () => {
                     </button>
                   </div>
                 </div>
+                )}
+              </div>
               </div>
 
-              <div className="flex justify-end pt-2 border-t border-[var(--border)]">
+              <div className="flex justify-end shrink-0 px-5 py-3 border-t border-[var(--border)]">
                 <button
                   onClick={toggleOptionsModal}
                   className="h-8 px-4 rounded-md bg-[var(--primary)] text-[var(--primary-foreground)] hover:opacity-90 font-medium text-xs cursor-pointer flex items-center justify-center transition-colors"
@@ -733,6 +780,8 @@ export const App: React.FC = () => {
               </div>
             </div>
           </div>
+        ,
+          document.body,
         )}
 
         {/* Custom Rook Inline Prompt Modal (New Folder, New File, Rename F2, Add Tag) */}

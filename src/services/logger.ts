@@ -136,8 +136,9 @@ function asObject(data: unknown): Record<string, unknown> {
 }
 
 function context() {
+  if (typeof window === 'undefined') return {};
   return {
-    url: location.href,
+    url: typeof location !== 'undefined' ? location.href : '',
     viewport: `${window.innerWidth}x${window.innerHeight}`,
     devicePixelRatio: window.devicePixelRatio,
   };

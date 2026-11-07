@@ -3,7 +3,7 @@ import { useExplorerStore } from '../store/useExplorerStore';
 import { LayoutMode } from '../types/fs';
 import { fsService } from '../services/fsService';
 import { KenneyIcon } from './KenneyIcon';
-import { handleFileDropToDir, hasFileDragData } from '../utils/dragDrop';
+import { handleFileDropToDir, hasFileDragData, setAppropriateDropEffect } from '../utils/dragDrop';
 
 export const RibbonHeader: React.FC = () => {
   const {
@@ -36,6 +36,7 @@ export const RibbonHeader: React.FC = () => {
     copySelectedToOtherPane,
     moveSelectedToOtherPane,
     dropEntriesToDir,
+    dropUrlToDir,
     openPowershellCurrent,
   } = useExplorerStore();
 
@@ -74,7 +75,7 @@ export const RibbonHeader: React.FC = () => {
 
   const handleDropOnPath = async (e: React.DragEvent, targetDir: string) => {
     setDragTarget(null);
-    await handleFileDropToDir(e, targetDir, dropEntriesToDir);
+    await handleFileDropToDir(e, targetDir, dropEntriesToDir, dropUrlToDir);
   };
 
   const handleNewFolder = () => {
@@ -427,7 +428,7 @@ export const RibbonHeader: React.FC = () => {
                         onDragOver={(e) => {
                           if (!hasFileDragData(e.dataTransfer)) return;
                           e.preventDefault();
-                          e.dataTransfer.dropEffect = e.ctrlKey ? 'copy' : 'move';
+                          setAppropriateDropEffect(e.dataTransfer, e.ctrlKey);
                           setDragTarget(`crumb:${crumbPath}`);
                         }}
                         onDragLeave={() => setDragTarget(null)}

@@ -1184,7 +1184,7 @@ public class Program
     {
         var ext = Path.GetExtension(filePath).TrimStart('.').ToLowerInvariant();
 
-        if (ext is "jpg" or "jpeg" or "webp" or "mp4" or "mov" or "mkv" or "pdf")
+        if (ext is "jpg" or "jpeg" or "webp" or "mp4" or "webm" or "mov" or "mkv" or "pdf")
         {
             if (TryExtractViaWindowsShell(filePath, targetSize, outPngPath))
                 return true;
