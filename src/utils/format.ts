@@ -35,6 +35,20 @@ export function formatTimestamp(ms: number): string {
   return `${year}-${month}-${day} ${hours}:${mins}`;
 }
 
+export function formatDuration(seconds: number): string {
+  const total = Math.max(0, Math.round(seconds));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  const ss = String(s).padStart(2, '0');
+  return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${ss}` : `${m}:${ss}`;
+}
+
+export function formatBitrate(bitsPerSec: number): string {
+  if (bitsPerSec >= 1_000_000) return `${(bitsPerSec / 1_000_000).toFixed(1)} Mbps`;
+  return `${Math.round(bitsPerSec / 1000)} kbps`;
+}
+
 export function getModifiedHeatStyle(ms: number): {
   backgroundColor?: string;
   borderColor?: string;
@@ -136,6 +150,7 @@ export function getExtensionBadgeClasses(entry: FsEntry): string {
     case 'gif':
     case 'ico':
     case 'bmp':
+    case 'psd':
       return 'bg-purple-500/15 text-purple-300 border border-purple-500/30';
     case 'mp4':
     case 'mov':
@@ -232,6 +247,7 @@ export function getFileIconName(entry: FsEntry): string {
     case 'gif':
     case 'bmp':
     case 'ico':
+    case 'psd':
       return 'file_image';
     case 'mp4':
     case 'mov':

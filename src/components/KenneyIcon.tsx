@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { PHOSPHOR_SVG_INNER } from './phosphorIconsData';
 
 interface KenneyIconProps {
@@ -40,6 +40,30 @@ const ICON_TINTS: Record<string, string> = {
   tokens_stack: 'text-amber-400/80',
 };
 
+// Full Phosphor set (regular weight), loaded lazily per icon so only visible icons are fetched.
+const PHOSPHOR_LOADERS = import.meta.glob('../assets/phosphor/regular/*.svg', {
+  query: '?raw',
+  import: 'default',
+}) as Record<string, () => Promise<string>>;
+const lazyInner = new Map<string, string>();
+const lazyPending = new Map<string, Promise<void>>();
+
+const loadPhosphorInner = (name: string): Promise<void> => {
+  const loader = PHOSPHOR_LOADERS[`../assets/phosphor/regular/${name}.svg`];
+  if (!loader || lazyInner.has(name)) return Promise.resolve();
+  let p = lazyPending.get(name);
+  if (!p) {
+    p = loader()
+      .then((raw) => {
+        const m = /<svg[^>]*>([\s\S]*)<\/svg>/i.exec(raw);
+        if (m) lazyInner.set(name, m[1]);
+      })
+      .catch(() => {});
+    lazyPending.set(name, p);
+  }
+  return p;
+};
+
 export const KenneyIcon: React.FC<KenneyIconProps> = ({
   name,
   size = 16,
@@ -48,7 +72,17 @@ export const KenneyIcon: React.FC<KenneyIconProps> = ({
   alt = '',
 }) => {
   const cleanName = name.replace(/\.(png|svg)$/i, '');
-  const innerSvg = PHOSPHOR_SVG_INNER[cleanName] || PHOSPHOR_SVG_INNER['card'];
+  const [, bump] = useState(0);
+  const known = PHOSPHOR_SVG_INNER[cleanName] || lazyInner.get(cleanName);
+  useEffect(() => {
+    if (known) return;
+    let alive = true;
+    loadPhosphorInner(cleanName).then(() => alive && bump((n) => n + 1));
+    return () => {
+      alive = false;
+    };
+  }, [cleanName, known]);
+  const innerSvg = known || PHOSPHOR_SVG_INNER['card'];
   const tintClass = color ? '' : ICON_TINTS[cleanName] || '';
 
   if (innerSvg) {

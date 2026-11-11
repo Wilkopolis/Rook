@@ -32,6 +32,30 @@ export const ContextMenu: React.FC = () => {
 
   const menuRef = useRef<HTMLDivElement>(null);
   const [coords, setCoords] = useState<{ x: number; y: number } | null>(null);
+  /** Name of the SSH host that can fetch the clipboard items itself; null hides the direct-paste entry. */
+  const [remotePasteHost, setRemotePasteHost] = useState<string | null>(null);
+
+  const pasteDest = contextMenu
+    ? contextMenu.entry?.isDirectory
+      ? contextMenu.entry.path
+      : currentPath
+    : null;
+
+  useEffect(() => {
+    setRemotePasteHost(null);
+    if (!pasteDest || !clipboard || !pasteDest.startsWith('ssh://')) return;
+    if (clipboard.paths.some((p) => p.startsWith('ssh://'))) return;
+    let stale = false;
+    fsService
+      .remoteCopyCheck(clipboard.paths, pasteDest)
+      .then((res) => {
+        if (!stale && res.available) setRemotePasteHost(res.hostLabel || 'SSH host');
+      })
+      .catch(() => {});
+    return () => {
+      stale = true;
+    };
+  }, [pasteDest, clipboard]);
 
   useEffect(() => {
     if (!contextMenu) {
@@ -75,7 +99,7 @@ export const ContextMenu: React.FC = () => {
     targetY = Math.max(pad, targetY);
 
     setCoords({ x: targetX, y: targetY });
-  }, [contextMenu]);
+  }, [contextMenu, remotePasteHost]);
 
   if (!contextMenu) return null;
 
@@ -309,6 +333,22 @@ export const ContextMenu: React.FC = () => {
             </button>
           )}
 
+          {clipboard && remotePasteHost && (
+            <button
+              onClick={() => {
+                closeContextMenu();
+                pasteClipboard(entry.isDirectory ? entry.path : currentPath, true);
+              }}
+              title={`${remotePasteHost} copies straight from the network share with rsync; nothing passes through this PC`}
+              className="w-full px-3 py-1.5 hover:bg-[var(--primary)]/20 flex items-center gap-2 cursor-pointer text-left"
+            >
+              <KenneyIcon name="import" size={14} className="text-emerald-400" />
+              <span>
+                {clipboard.mode === 'cut' ? 'Move' : 'Paste'} directly on {remotePasteHost} ({clipboard.paths.length})
+              </span>
+            </button>
+          )}
+
           <button
             onClick={handleRename}
             className="w-full px-3 py-1.5 hover:bg-[var(--primary)]/20 flex items-center justify-between cursor-pointer text-left"
@@ -483,6 +523,22 @@ export const ContextMenu: React.FC = () => {
                 <span>Paste ({clipboard.paths.length} item{clipboard.paths.length === 1 ? '' : 's'})</span>
               </span>
               <span className="text-[10px] text-[var(--muted-foreground)]">Ctrl+V</span>
+            </button>
+          )}
+
+          {clipboard && remotePasteHost && (
+            <button
+              onClick={() => {
+                closeContextMenu();
+                pasteClipboard(currentPath, true);
+              }}
+              title={`${remotePasteHost} copies straight from the network share with rsync; nothing passes through this PC`}
+              className="w-full px-3 py-1.5 hover:bg-[var(--primary)]/20 flex items-center gap-2 cursor-pointer text-left"
+            >
+              <KenneyIcon name="import" size={14} className="text-emerald-400" />
+              <span>
+                {clipboard.mode === 'cut' ? 'Move' : 'Paste'} directly on {remotePasteHost} ({clipboard.paths.length})
+              </span>
             </button>
           )}
 

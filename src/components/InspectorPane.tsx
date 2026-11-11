@@ -1,6 +1,8 @@
 import React from 'react';
 import { useExplorerStore } from '../store/useExplorerStore';
-import { formatBytes, formatRelativeTime } from '../utils/format';
+import { formatBytes, formatRelativeTime, formatDuration, formatBitrate, formatTimestamp } from '../utils/format';
+import { fsService } from '../services/fsService';
+import type { MediaInfo } from '../types/fs';
 import { KenneyIcon } from './KenneyIcon';
 import { FileThumbnail } from './FileThumbnail';
 
@@ -16,9 +18,35 @@ export const InspectorPane: React.FC = () => {
     navigateTo,
   } = useExplorerStore();
 
-  if (!showInspector) return null;
-
   const selectedItem = items.find((i) => i.path === selectedPath);
+  const mediaPath =
+    showInspector &&
+    selectedItem &&
+    !selectedItem.isDirectory &&
+    (preview?.kind === 'video' || preview?.kind === 'image')
+      ? selectedItem.path
+      : null;
+
+  // Keyed by path so a result for a previously selected file never shows for the current one.
+  const [mediaState, setMediaState] = React.useState<{ path: string; info: MediaInfo } | null>(null);
+  React.useEffect(() => {
+    if (!mediaPath) return;
+    let cancelled = false;
+    fsService
+      .getMediaInfo(mediaPath)
+      .then((info) => {
+        if (!cancelled) setMediaState({ path: mediaPath, info });
+      })
+      .catch(() => {
+        /* unavailable (e.g. npm run dev); hide media rows */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [mediaPath]);
+  const mediaInfo = mediaPath && mediaState?.path === mediaPath ? mediaState.info : null;
+
+  if (!showInspector) return null;
 
   const handleAddTag = () => {
     if (!selectedItem) return;
@@ -149,6 +177,40 @@ export const InspectorPane: React.FC = () => {
             <span className="text-[var(--muted-foreground)]">Modified</span>
             <span>{formatRelativeTime(selectedItem.modifiedMs)}</span>
           </div>
+          {mediaInfo && (mediaInfo.kind === 'video' || mediaInfo.kind === 'image') && (
+            <>
+              {mediaInfo.width && mediaInfo.height ? (
+                <div className="flex justify-between">
+                  <span className="text-[var(--muted-foreground)]">Resolution</span>
+                  <span className="font-mono">{mediaInfo.width}×{mediaInfo.height}</span>
+                </div>
+              ) : null}
+              {mediaInfo.durationSeconds != null && (
+                <div className="flex justify-between">
+                  <span className="text-[var(--muted-foreground)]">Duration</span>
+                  <span className="font-mono">{formatDuration(mediaInfo.durationSeconds)}</span>
+                </div>
+              )}
+              {mediaInfo.bitrate != null && (
+                <div className="flex justify-between">
+                  <span className="text-[var(--muted-foreground)]">Bitrate</span>
+                  <span className="font-mono">{formatBitrate(mediaInfo.bitrate)}</span>
+                </div>
+              )}
+              {mediaInfo.createdMs ? (
+                <div className="flex justify-between">
+                  <span className="text-[var(--muted-foreground)]">Created</span>
+                  <span className="font-mono">{formatTimestamp(mediaInfo.createdMs)}</span>
+                </div>
+              ) : null}
+              {mediaInfo.modifiedMs ? (
+                <div className="flex justify-between">
+                  <span className="text-[var(--muted-foreground)]">Modified (exact)</span>
+                  <span className="font-mono">{formatTimestamp(mediaInfo.modifiedMs)}</span>
+                </div>
+              ) : null}
+            </>
+          )}
           {selectedItem.gitStatus && (
             <div className="flex justify-between">
               <span className="text-[var(--muted-foreground)]">Git Status</span>

@@ -21,6 +21,10 @@
   --primary-subtle: rgba(2, 132, 199, 0.12);
   --primary-text: #0284c7;
   --primary-foreground: #ffffff;
+  --danger: #dc2626;
+  --danger-hover: #b91c1c;
+  --danger-subtle: rgba(220, 38, 38, 0.1);
+  --danger-text: #dc2626;
 
   --scrollbar-track: #e2e8f0;
   --scrollbar-thumb: #94a3b8;
@@ -40,6 +44,10 @@ html.dark {
   --primary-subtle: rgba(56, 189, 248, 0.16);
   --primary-text: #38bdf8;
   --primary-foreground: #ffffff;
+  --danger: #dc2626;
+  --danger-hover: #ef4444;
+  --danger-subtle: rgba(248, 113, 113, 0.14);
+  --danger-text: #f87171;
 
   --scrollbar-track: #0b0e14;
   --scrollbar-thumb: #232a39;

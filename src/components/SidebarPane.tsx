@@ -91,7 +91,7 @@ export const SidebarPane: React.FC = () => {
     sidebarSectionOrder,
     currentPath,
     layout,
-    navigateTo,
+    navigateSidebar,
     togglePinFolder,
     pinQuickAccessFolder,
     unpinQuickAccessFolder,
@@ -107,8 +107,43 @@ export const SidebarPane: React.FC = () => {
     reorderWorkflows,
     dropEntriesToDir,
     dropUrlToDir,
+    hideDrive,
+    hiddenDrives,
+    sshConnections,
+    sshDrives,
+    loadSshDrives,
+    openSshHost,
+    disconnectSsh,
+    openOptionsTo,
   } = useExplorerStore();
 
+  const [driveMenu, setDriveMenu] = useState<{ x: number; y: number; drive: string } | null>(null);
+  const [sshMenu, setSshMenu] = useState<{ x: number; y: number; id: string } | null>(null);
+  const [connectingSshId, setConnectingSshId] = useState<string | null>(null);
+  React.useEffect(() => {
+    if (!driveMenu && !sshMenu) return;
+    const close = () => {
+      setDriveMenu(null);
+      setSshMenu(null);
+    };
+    window.addEventListener('click', close);
+    window.addEventListener('scroll', close, true);
+    window.addEventListener('resize', close);
+    return () => {
+      window.removeEventListener('click', close);
+      window.removeEventListener('scroll', close, true);
+      window.removeEventListener('resize', close);
+    };
+  }, [driveMenu, sshMenu]);
+
+  const openSsh = async (id: string, at: 'home' | 'root' | { path: string } = 'home') => {
+    setConnectingSshId(id);
+    try {
+      await openSshHost(id, at);
+    } finally {
+      setConnectingSshId((cur) => (cur === id ? null : cur));
+    }
+  };
   const [dragTarget, setDragTarget] = useState<string | null>(null);
   const [editing, setEditing] = useState<EditingTarget | null>(null);
   const [editingLabel, setEditingLabel] = useState('');
@@ -336,7 +371,7 @@ export const SidebarPane: React.FC = () => {
                   await handleFileDropToDir(e, pin.path, dropEntriesToDir, dropUrlToDir);
                 }}
                 onClick={() => {
-                  if (!isEditing) navigateTo(pin.path);
+                  if (!isEditing) navigateSidebar(pin.path);
                 }}
                 onDoubleClick={(e) => {
                   e.stopPropagation();
@@ -446,6 +481,10 @@ export const SidebarPane: React.FC = () => {
     </div>
   );
 
+  const visibleDrives = drives.filter(
+    (drive) => !hiddenDrives.some((h) => h.toLowerCase() === drive.toLowerCase())
+  );
+
   const renderDrives = () => (
     <div>
       <div
@@ -466,9 +505,22 @@ export const SidebarPane: React.FC = () => {
         <span className="text-[10px] text-[var(--muted-foreground)] group-hover/sec-hdr:text-[var(--foreground)] font-semibold uppercase tracking-wider">
           Drives & Mounts
         </span>
+        <button
+          type="button"
+          draggable={false}
+          onClick={(e) => {
+            e.stopPropagation();
+            openOptionsTo('network');
+          }}
+          className="ml-auto w-4 h-4 rounded flex items-center justify-center text-[var(--muted-foreground)] opacity-0 group-hover/sec-hdr:opacity-100 focus:opacity-100 hover:text-[var(--foreground)] hover:bg-white/[0.08] cursor-pointer transition-opacity"
+          title="Add SSH host"
+          aria-label="Add SSH host"
+        >
+          <KenneyIcon name="plus" size={11} />
+        </button>
       </div>
       <div className="space-y-0.5">
-        {drives.map((drive) => {
+        {visibleDrives.map((drive) => {
           const info = driveDetails.find(
             (d) => d.name.toLowerCase() === drive.toLowerCase()
           );
@@ -482,7 +534,13 @@ export const SidebarPane: React.FC = () => {
           return (
             <div
               key={drive}
-              onClick={() => navigateTo(drive)}
+              onClick={() => navigateSidebar(drive)}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setSshMenu(null);
+                setDriveMenu({ x: e.clientX, y: e.clientY, drive });
+              }}
               title={
                 total > 0
                   ? `${info?.label || 'Local Disk'} (${drive}) — ${formatBytes(free)} free of ${formatBytes(total)} (${pct}% used)`
@@ -519,6 +577,103 @@ export const SidebarPane: React.FC = () => {
                 </div>
               )}
             </div>
+          );
+        })}
+        {sshConnections.map((conn) => {
+          const isActive = currentPath.toLowerCase().startsWith(conn.rootPath.toLowerCase());
+          const isConnecting = connectingSshId === conn.id;
+          const name = conn.label || conn.target;
+          const remoteDrives = sshDrives[conn.id] ?? [];
+          // The disk holding the current folder is the one with the longest matching mount point.
+          const activeDrive = isActive
+            ? remoteDrives.reduce<(typeof remoteDrives)[number] | null>((best, d) => {
+                const base = d.path.replace(/\/+$/, '');
+                const inside = currentPath === base || currentPath.startsWith(base + '/');
+                return inside && (!best || d.path.length > best.path.length) ? d : best;
+              }, null)
+            : null;
+          return (
+            <React.Fragment key={`ssh:${conn.id}`}>
+            <div
+              onClick={() => openSsh(conn.id)}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setDriveMenu(null);
+                setSshMenu({ x: e.clientX, y: e.clientY, id: conn.id });
+              }}
+              title={`${name} — SSH ${conn.target}${conn.connected ? ' (connected)' : ''}`}
+              className={`px-2 py-1 rounded cursor-pointer flex items-center justify-between gap-1.5 ${
+                isActive && !activeDrive
+                  ? 'bg-[var(--card)] text-[var(--foreground)] font-medium border border-[var(--border)]'
+                  : 'text-[var(--muted-foreground)] hover:bg-[var(--card)]/50'
+              }`}
+            >
+              <span className="flex items-center gap-1.5 truncate min-w-0">
+                <KenneyIcon name="desktop-tower" size={13} />
+                <span className="truncate">{name}</span>
+              </span>
+              <span className="text-[10px] font-mono text-[var(--muted-foreground)] shrink-0 flex items-center gap-1">
+                {isConnecting ? (
+                  '…'
+                ) : (
+                  <span
+                    className={`w-1.5 h-1.5 rounded-full ${conn.connected ? 'bg-emerald-400' : 'bg-[var(--muted-foreground)]/40'}`}
+                    aria-label={conn.connected ? 'Connected' : 'Not connected'}
+                  />
+                )}
+                SSH
+              </span>
+            </div>
+            {remoteDrives.map((d) => {
+              const total = d.totalBytes || 0;
+              const free = d.freeBytes || 0;
+              const pct = total > 0 ? Math.min(100, Math.round((Math.max(0, total - free) / total) * 100)) : 0;
+              const barColor = pct >= 90 ? 'bg-rose-500' : pct >= 75 ? 'bg-amber-400' : 'bg-sky-400/80';
+              const isActiveDrive = activeDrive?.path === d.path;
+              return (
+                <div
+                  key={`ssh:${conn.id}:${d.mountPoint}`}
+                  onClick={() => openSsh(conn.id, { path: d.path })}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setDriveMenu(null);
+                    setSshMenu({ x: e.clientX, y: e.clientY, id: conn.id });
+                  }}
+                  title={
+                    `${d.mountPoint} on ${name} — ${d.device} (${d.fsType})` +
+                    (total > 0 ? ` — ${formatBytes(free)} free of ${formatBytes(total)} (${pct}% used)` : '')
+                  }
+                  {...bindDropTarget(d.path)}
+                  className={`ml-3 px-2 py-1 rounded cursor-pointer flex flex-col gap-1 ${
+                    dragTarget === d.path
+                      ? 'bg-sky-500/20 ring-1 ring-sky-400 text-[var(--foreground)]'
+                      : isActiveDrive
+                        ? 'bg-[var(--card)] text-[var(--foreground)] font-medium border border-[var(--border)]'
+                        : 'text-[var(--muted-foreground)] hover:bg-[var(--card)]/50'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-1.5">
+                    <span className="flex items-center gap-1.5 truncate min-w-0">
+                      <KenneyIcon name="save" size={13} />
+                      <span className="truncate">{d.mountPoint === '/' ? 'Root (/)' : d.name}</span>
+                    </span>
+                    {total > 0 && (
+                      <span className="text-[10px] font-mono text-[var(--muted-foreground)] shrink-0">
+                        {formatBytes(free)} / {formatBytes(total)}
+                      </span>
+                    )}
+                  </div>
+                  {total > 0 && (
+                    <div className="h-1 w-full rounded-full bg-[var(--background)] overflow-hidden">
+                      <div className={`h-full rounded-full transition-all ${barColor}`} style={{ width: `${pct}%` }} />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+            </React.Fragment>
           );
         })}
       </div>
@@ -798,6 +953,73 @@ export const SidebarPane: React.FC = () => {
       : (['quickAccess', 'drives', 'workflows'] as SidebarSectionId[]);
 
   return (
+    <>
+    {driveMenu && (
+      <div
+        style={{
+          left: Math.max(8, Math.min(driveMenu.x, window.innerWidth - 200 - 8)),
+          top: Math.max(8, Math.min(driveMenu.y, window.innerHeight - 50 - 8)),
+        }}
+        onClick={(e) => e.stopPropagation()}
+        onContextMenu={(e) => e.preventDefault()}
+        className="fixed z-50 w-48 rounded-xl bg-[var(--sidebar)] border border-[var(--border)] shadow-2xl py-1.5 text-xs text-[var(--foreground)] select-none"
+      >
+        <button
+          onClick={() => {
+            hideDrive(driveMenu.drive);
+            setDriveMenu(null);
+          }}
+          className="w-full px-3 py-1.5 hover:bg-[var(--primary)]/20 flex items-center gap-2 cursor-pointer text-left"
+        >
+          <KenneyIcon name="cross" size={13} />
+          <span>Hide drive</span>
+        </button>
+      </div>
+    )}
+    {sshMenu && (() => {
+      const conn = sshConnections.find((c) => c.id === sshMenu.id);
+      if (!conn) return null;
+      const item = 'w-full px-3 py-1.5 hover:bg-[var(--primary)]/20 flex items-center gap-2 cursor-pointer text-left';
+      const run = (fn: () => void) => () => {
+        setSshMenu(null);
+        fn();
+      };
+      return (
+        <div
+          style={{
+            left: Math.max(8, Math.min(sshMenu.x, window.innerWidth - 200 - 8)),
+            top: Math.max(8, Math.min(sshMenu.y, window.innerHeight - 140 - 8)),
+          }}
+          onClick={(e) => e.stopPropagation()}
+          onContextMenu={(e) => e.preventDefault()}
+          className="fixed z-50 w-48 rounded-xl bg-[var(--sidebar)] border border-[var(--border)] shadow-2xl py-1.5 text-xs text-[var(--foreground)] select-none"
+        >
+          <button onClick={run(() => openSsh(conn.id, 'home'))} className={item}>
+            <KenneyIcon name="folder" size={13} />
+            <span>Open home folder</span>
+          </button>
+          <button onClick={run(() => openSsh(conn.id, 'root'))} className={item}>
+            <KenneyIcon name="hard-drives" size={13} />
+            <span>Open root (/)</span>
+          </button>
+          <button onClick={run(() => void loadSshDrives(conn.id))} className={item}>
+            <KenneyIcon name="save" size={13} />
+            <span>Refresh drives</span>
+          </button>
+          {conn.connected && (
+            <button onClick={run(() => disconnectSsh(conn.id))} className={item}>
+              <KenneyIcon name="plugs" size={13} />
+              <span>Disconnect</span>
+            </button>
+          )}
+          <div className="my-1 border-t border-[var(--border)]/60" />
+          <button onClick={run(() => openOptionsTo('network'))} className={item}>
+            <KenneyIcon name="gear" size={13} />
+            <span>Manage SSH hosts…</span>
+          </button>
+        </div>
+      );
+    })()}
     <aside className="w-56 border-r border-[var(--border)] bg-[var(--sidebar)] p-2 flex flex-col justify-between text-xs select-none shrink-0 overflow-y-auto">
       <div className="space-y-3">
         {sectionOrder.map((sectionId) => {
@@ -877,5 +1099,6 @@ export const SidebarPane: React.FC = () => {
         />
       )}
     </aside>
+    </>
   );
 };

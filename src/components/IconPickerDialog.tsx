@@ -1,4 +1,5 @@
-﻿import React, { useState, useMemo } from 'react';
+﻿import React, { useState, useMemo, useRef, useEffect } from 'react';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import { KenneyIcon } from './KenneyIcon';
 import { ICON_CATEGORIES, ICON_CATALOG } from './iconCatalog';
 
@@ -46,6 +47,35 @@ export const IconPickerDialog: React.FC<Props> = ({ title, initialIcon, initialC
     if (q) list = list.filter((item) => item.id.toLowerCase().includes(q) || item.label.toLowerCase().includes(q));
     return list;
   }, [selectedCategory, iconSearchQuery]);
+
+  // Virtualized grid: column count follows container width (cell ~56px + 8px gap).
+  const gridRef = useRef<HTMLDivElement>(null);
+  const [gridWidth, setGridWidth] = useState(600);
+  useEffect(() => {
+    const el = gridRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setGridWidth(el.clientWidth));
+    ro.observe(el);
+    setGridWidth(el.clientWidth);
+    return () => ro.disconnect();
+  }, []);
+  const GAP = 8;
+  const PAD = 8;
+  const columns = Math.max(1, Math.floor((gridWidth - PAD * 2 + GAP) / (56 + GAP)));
+  const cellSize = (gridWidth - PAD * 2 - GAP * (columns - 1)) / columns;
+  const rowCount = Math.ceil(filteredIcons.length / columns);
+  const rowVirtualizer = useVirtualizer({
+    count: rowCount,
+    getScrollElement: () => gridRef.current,
+    estimateSize: () => cellSize + GAP,
+    overscan: 4,
+    paddingStart: PAD,
+    paddingEnd: PAD,
+  });
+  useEffect(() => {
+    rowVirtualizer.measure();
+    gridRef.current?.scrollTo({ top: 0 });
+  }, [selectedCategory, iconSearchQuery, cellSize, rowVirtualizer]);
 
   const activeIconItem = useMemo(() => ICON_CATALOG.find((item) => item.id === selectedIcon), [selectedIcon]);
 
@@ -108,7 +138,7 @@ export const IconPickerDialog: React.FC<Props> = ({ title, initialIcon, initialC
                 </span>
                 <input
                   type="text"
-                  placeholder="Search 220+ icons (e.g. cloud, code, git, star, media, heart)..."
+                  placeholder="Search 1,500+ icons (e.g. cloud, code, git, star, media, heart)..."
                   value={iconSearchQuery}
                   onChange={(e) => setIconSearchQuery(e.target.value)}
                   className="w-full bg-[var(--background)] text-[var(--foreground)] pl-8 pr-7 py-1.5 rounded-lg border border-[var(--border)] text-xs placeholder:text-[var(--muted-foreground)]/60 focus:border-sky-400 outline-none transition-colors"
@@ -146,32 +176,54 @@ export const IconPickerDialog: React.FC<Props> = ({ title, initialIcon, initialC
                 })}
               </div>
 
-              {/* Scrollable Icon Grid (auto-fill columns, square cells) */}
-              <div className="grid grid-cols-[repeat(auto-fill,minmax(3.5rem,1fr))] gap-2 bg-[var(--background)]/70 p-2 rounded-lg border border-[var(--border)]/70 max-h-[55vh] overflow-y-auto">
-                {filteredIcons.map((item) => {
-                  const active = selectedIcon === item.id;
-                  return (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => setSelectedIcon(item.id)}
-                      title={`${item.label} (${item.id})`}
-                      className={`aspect-square rounded-md flex items-center justify-center cursor-pointer transition-all ${
-                        active
-                          ? 'bg-sky-500/25 ring-2 ring-sky-400 scale-105'
-                          : 'hover:bg-[var(--card)] hover:scale-105 opacity-80 hover:opacity-100'
-                      }`}
-                    >
-                      <KenneyIcon
-                        name={item.id}
-                        size={28}
-                        color={active ? selectedColor : '#cbd5e1'}
-                      />
-                    </button>
-                  );
-                })}
+              {/* Virtualized Icon Grid (rows virtualized, columns follow width) */}
+              <div
+                ref={gridRef}
+                className="bg-[var(--background)]/70 rounded-lg border border-[var(--border)]/70 h-[55vh] overflow-y-auto"
+              >
+                {filteredIcons.length > 0 && (
+                  <div style={{ height: rowVirtualizer.getTotalSize(), position: 'relative', width: '100%' }}>
+                    {rowVirtualizer.getVirtualItems().map((row) => {
+                      const start = row.index * columns;
+                      const items = filteredIcons.slice(start, start + columns);
+                      return (
+                        <div
+                          key={row.key}
+                          className="absolute left-0 flex"
+                          style={{
+                            top: 0,
+                            transform: `translateY(${row.start}px)`,
+                            height: cellSize,
+                            paddingLeft: PAD,
+                            gap: GAP,
+                          }}
+                        >
+                          {items.map((item) => {
+                            const active = selectedIcon === item.id;
+                            return (
+                              <button
+                                key={item.id}
+                                type="button"
+                                onClick={() => setSelectedIcon(item.id)}
+                                title={`${item.label} (${item.id})`}
+                                style={{ width: cellSize, height: cellSize }}
+                                className={`shrink-0 rounded-md flex items-center justify-center cursor-pointer transition-all ${
+                                  active
+                                    ? 'bg-sky-500/25 ring-2 ring-sky-400'
+                                    : 'hover:bg-[var(--card)] opacity-80 hover:opacity-100'
+                                }`}
+                              >
+                                <KenneyIcon name={item.id} size={28} color={active ? selectedColor : '#cbd5e1'} />
+                              </button>
+                            );
+                          })}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
                 {filteredIcons.length === 0 && (
-                  <div className="col-span-full py-8 text-center text-xs text-[var(--muted-foreground)] space-y-1">
+                  <div className="py-8 text-center text-xs text-[var(--muted-foreground)] space-y-1">
                     <div>No icons match &ldquo;{iconSearchQuery}&rdquo;</div>
                     <button
                       type="button"

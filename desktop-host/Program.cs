@@ -587,7 +587,7 @@ public class RookWindow : Form
     }
 }
 
-public class Program
+public partial class Program
 {
     private static RookWindow? MainWindow;
 
@@ -1059,42 +1059,6 @@ public class Program
         }
     }
 
-    private static string GetUniqueCopyDestination(string sourcePath, string destDir)
-    {
-        string fileName = Path.GetFileName(sourcePath);
-        string candidate = Path.Combine(destDir, fileName);
-        if (!string.Equals(Path.GetFullPath(sourcePath), Path.GetFullPath(candidate), StringComparison.OrdinalIgnoreCase))
-        {
-            return candidate;
-        }
-
-        string baseName = Path.GetFileNameWithoutExtension(fileName);
-        string ext = Path.GetExtension(fileName);
-        string copyCandidate = Path.Combine(destDir, $"{baseName} - Copy{ext}");
-        int counter = 2;
-        while (File.Exists(copyCandidate) || Directory.Exists(copyCandidate))
-        {
-            copyCandidate = Path.Combine(destDir, $"{baseName} - Copy ({counter}){ext}");
-            counter++;
-        }
-        return copyCandidate;
-    }
-
-    private static void CopyDirectoryRecursive(string sourceDir, string destDir)
-    {
-        Directory.CreateDirectory(destDir);
-        foreach (var file in Directory.GetFiles(sourceDir))
-        {
-            string targetFile = Path.Combine(destDir, Path.GetFileName(file));
-            File.Copy(file, targetFile, true);
-        }
-        foreach (var subDir in Directory.GetDirectories(sourceDir))
-        {
-            string targetSubDir = Path.Combine(destDir, Path.GetFileName(subDir));
-            CopyDirectoryRecursive(subDir, targetSubDir);
-        }
-    }
-
     private static readonly SemaphoreSlim ThumbWorkerSemaphore = new(
         Math.Clamp(Environment.ProcessorCount / 2, 2, 6)
     );
@@ -1180,6 +1144,109 @@ public class Program
         return false;
     }
 
+    // ---- Media metadata via the Windows property system (no external codecs/libraries) ----
+
+    [StructLayout(LayoutKind.Sequential, Pack = 4)]
+    private struct PROPERTYKEY
+    {
+        public Guid fmtid;
+        public uint pid;
+        public PROPERTYKEY(string fmtid, uint pid) { this.fmtid = new Guid(fmtid); this.pid = pid; }
+    }
+
+    // Opaque PROPVARIANT storage (24 bytes on x64, 16 on x86); only handed to propsys helpers.
+    [StructLayout(LayoutKind.Sequential)]
+    private struct PROPVARIANT
+    {
+        public ushort vt;
+        public ushort r1;
+        public ushort r2;
+        public ushort r3;
+        public IntPtr p1;
+        public IntPtr p2;
+    }
+
+    [ComImport]
+    [Guid("886d8eeb-8cf2-4446-8d02-cdba1dbdcf99")]
+    [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    private interface IPropertyStore
+    {
+        [PreserveSig] int GetCount(out uint cProps);
+        [PreserveSig] int GetAt(uint iProp, out PROPERTYKEY pkey);
+        [PreserveSig] int GetValue(ref PROPERTYKEY key, out PROPVARIANT pv);
+        [PreserveSig] int SetValue(ref PROPERTYKEY key, ref PROPVARIANT pv);
+        [PreserveSig] int Commit();
+    }
+
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode, PreserveSig = true)]
+    private static extern int SHGetPropertyStoreFromParsingName(
+        [In] string pszPath,
+        [In] IntPtr pbc,
+        [In] int flags,
+        [In, MarshalAs(UnmanagedType.LPStruct)] Guid riid,
+        [MarshalAs(UnmanagedType.Interface)] out IPropertyStore ppv
+    );
+
+    [DllImport("propsys.dll", PreserveSig = true)]
+    private static extern ulong PropVariantToUInt64WithDefault(ref PROPVARIANT pv, ulong ulDefault);
+
+    [DllImport("ole32.dll", PreserveSig = true)]
+    private static extern int PropVariantClear(ref PROPVARIANT pv);
+
+    private const string PkVideoFmt = "64440491-4C8B-11D1-8B70-080036B11A03";
+    private const string PkMediaFmt = "64440490-4C8B-11D1-8B70-080036B11A03";
+    private const string PkImageFmt = "6444048F-4C8B-11D1-8B70-080036B11A03";
+
+    private static ulong? ReadPropUInt64(IPropertyStore store, PROPERTYKEY key)
+    {
+        if (store.GetValue(ref key, out var pv) != 0) return null;
+        try
+        {
+            if (pv.vt == 0) return null; // VT_EMPTY: property not present
+            var v = PropVariantToUInt64WithDefault(ref pv, 0UL);
+            return v == 0 ? null : v;
+        }
+        finally { PropVariantClear(ref pv); }
+    }
+
+    private sealed record MediaProps(int? Width, int? Height, double? DurationSeconds, long? Bitrate);
+
+    private static MediaProps ReadMediaProps(string path, bool isVideo)
+    {
+        int? width = null, height = null;
+        double? duration = null;
+        long? bitrate = null;
+        IPropertyStore? store = null;
+        try
+        {
+            var iid = new Guid("886d8eeb-8cf2-4446-8d02-cdba1dbdcf99");
+            if (SHGetPropertyStoreFromParsingName(path, IntPtr.Zero, 0 /* GPS_DEFAULT */, iid, out store) != 0 || store == null)
+                return new MediaProps(null, null, null, null);
+
+            if (isVideo)
+            {
+                width = (int?)ReadPropUInt64(store, new PROPERTYKEY(PkVideoFmt, 3));   // System.Video.FrameWidth
+                height = (int?)ReadPropUInt64(store, new PROPERTYKEY(PkVideoFmt, 4));  // System.Video.FrameHeight
+                var dur100ns = ReadPropUInt64(store, new PROPERTYKEY(PkMediaFmt, 3));  // System.Media.Duration (100 ns units)
+                if (dur100ns.HasValue) duration = dur100ns.Value / 10_000_000.0;
+                var br = ReadPropUInt64(store, new PROPERTYKEY(PkVideoFmt, 43))        // System.Video.TotalBitrate
+                         ?? ReadPropUInt64(store, new PROPERTYKEY(PkVideoFmt, 8));     // System.Video.EncodingBitrate
+                if (br.HasValue) bitrate = (long)br.Value;
+            }
+            else
+            {
+                width = (int?)ReadPropUInt64(store, new PROPERTYKEY(PkImageFmt, 3));   // System.Image.HorizontalSize
+                height = (int?)ReadPropUInt64(store, new PROPERTYKEY(PkImageFmt, 4));  // System.Image.VerticalSize
+            }
+        }
+        catch { }
+        finally
+        {
+            if (store != null) { try { Marshal.ReleaseComObject(store); } catch { } }
+        }
+        return new MediaProps(width, height, duration, bitrate);
+    }
+
     private static bool TryGenerateThumbnail(string filePath, int targetSize, string outPngPath)
     {
         var ext = Path.GetExtension(filePath).TrimStart('.').ToLowerInvariant();
@@ -1187,6 +1254,13 @@ public class Program
         if (ext is "jpg" or "jpeg" or "webp" or "mp4" or "webm" or "mov" or "mkv" or "pdf")
         {
             if (TryExtractViaWindowsShell(filePath, targetSize, outPngPath))
+                return true;
+        }
+
+        if (ext == "psd")
+        {
+            // Native decoder first; fall back to a shell thumbnail handler if one is installed.
+            if (TryGeneratePsdThumbnail(filePath, targetSize, outPngPath))
                 return true;
         }
 
@@ -1492,6 +1566,12 @@ public class Program
         app.MapGet("/api/fs/thumb", async (HttpContext ctx) =>
         {
             var rawPath = ctx.Request.Query["path"].ToString();
+            if (SshManager.IsSshPath(rawPath))
+            {
+                int sshSize = int.TryParse(ctx.Request.Query["size"], out int ss) ? Math.Clamp(ss, 32, 512) : 128;
+                await ServeSshMediaSafelyAsync(ctx, () => ServeSshThumbAsync(ctx, rawPath, sshSize, GetContentType));
+                return;
+            }
             if (string.IsNullOrWhiteSpace(rawPath) || !File.Exists(rawPath))
             {
                 ctx.Response.StatusCode = 404;
@@ -1537,6 +1617,11 @@ public class Program
         app.MapGet("/api/fs/raw", async (HttpContext ctx) =>
         {
             var rawPath = ctx.Request.Query["path"].ToString();
+            if (SshManager.IsSshPath(rawPath))
+            {
+                await ServeSshMediaSafelyAsync(ctx, () => ServeSshRawAsync(ctx, rawPath, GetContentType));
+                return;
+            }
             if (string.IsNullOrWhiteSpace(rawPath) || !File.Exists(rawPath))
             {
                 ctx.Response.StatusCode = 404;
@@ -1552,6 +1637,27 @@ public class Program
             {
                 using var doc = await JsonDocument.ParseAsync(ctx.Request.Body);
                 var root = doc.RootElement;
+
+                // Copy/move progress jobs; see Program.Transfers.cs.
+                if (TryHandleTransferAction(action, root) is { } transferResult)
+                {
+                    return transferResult;
+                }
+                if (action == "transferPlan")
+                {
+                    return await Task.Run(() => HandleTransferPlanAsync(root, ctx.RequestAborted));
+                }
+                if (action == "remoteCopyCheck")
+                {
+                    // Can the SSH host fetch these files itself? See Program.RemoteCopy.cs.
+                    return await Task.Run(() => HandleRemoteCopyCheckAsync(root, ctx.RequestAborted));
+                }
+
+                // Paths on SSH hosts (ssh://{id}/...) are served over SFTP; see Program.Ssh.cs.
+                if (await TryHandleSshActionAsync(action, root, ctx.RequestAborted) is { } sshResult)
+                {
+                    return sshResult;
+                }
 
                 // Frameless window controls
                 if (action == "winDrag")
@@ -1831,6 +1937,74 @@ public class Program
                     return Results.Json(new { path = targetPath, items });
                 }
 
+                if (action == "mediaInfo")
+                {
+                    var reqPath = root.TryGetProperty("path", out var pProp) && pProp.ValueKind == JsonValueKind.String
+                        ? pProp.GetString()
+                        : null;
+                    if (string.IsNullOrWhiteSpace(reqPath))
+                        return Results.Json(new { error = "path is required" }, statusCode: 400);
+
+                    var targetPath = Path.GetFullPath(reqPath);
+                    if (!File.Exists(targetPath))
+                        return Results.Json(new { error = "File not found" }, statusCode: 404);
+
+                    var fi = new FileInfo(targetPath);
+                    var ext = fi.Extension.TrimStart('.').ToLowerInvariant();
+                    long createdMs = new DateTimeOffset(fi.CreationTimeUtc).ToUnixTimeMilliseconds();
+                    long modifiedMs = new DateTimeOffset(fi.LastWriteTimeUtc).ToUnixTimeMilliseconds();
+
+                    string kind = ImageExts.Contains(ext) ? "image" : VideoExts.Contains(ext) ? "video" : "other";
+                    int? width = null, height = null;
+                    double? durationSeconds = null;
+                    long? bitrate = null;
+
+                    if (kind == "image")
+                    {
+                        if (ext is "png" or "jpg" or "jpeg" or "bmp" or "gif" or "ico")
+                        {
+                            try
+                            {
+                                using var fs = new FileStream(targetPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+                                using var img = Image.FromStream(fs, false, false);
+                                width = img.Width;
+                                height = img.Height;
+                            }
+                            catch { }
+                        }
+                        if (width == null || height == null)
+                        {
+                            var props = ReadMediaProps(targetPath, isVideo: false);
+                            width = props.Width;
+                            height = props.Height;
+                        }
+                    }
+                    else if (kind == "video")
+                    {
+                        var props = ReadMediaProps(targetPath, isVideo: true);
+                        width = props.Width;
+                        height = props.Height;
+                        durationSeconds = props.DurationSeconds;
+                        bitrate = props.Bitrate;
+                        if (bitrate == null && durationSeconds is > 0)
+                        {
+                            bitrate = (long)Math.Round(fi.Length * 8.0 / durationSeconds.Value);
+                        }
+                    }
+
+                    return Results.Json(new
+                    {
+                        kind,
+                        width,
+                        height,
+                        durationSeconds,
+                        bitrate,
+                        sizeBytes = fi.Length,
+                        createdMs,
+                        modifiedMs
+                    });
+                }
+
                 if (action == "preview")
                 {
                     var targetPath = Path.GetFullPath(root.GetProperty("path").GetString()!);
@@ -1947,33 +2121,10 @@ public class Program
                     return Results.Json(new { ok = true });
                 }
 
-                if (action == "copy")
+                if (action == "copy" || action == "move")
                 {
-                    var sourcePath = root.GetProperty("sourcePath").GetString()!;
-                    var destDir = root.GetProperty("destDir").GetString()!;
-                    var destPath = GetUniqueCopyDestination(sourcePath, destDir);
-                    if (Directory.Exists(sourcePath))
-                    {
-                        CopyDirectoryRecursive(sourcePath, destPath);
-                    }
-                    else if (File.Exists(sourcePath))
-                    {
-                        File.Copy(sourcePath, destPath, true);
-                    }
-                    return Results.Json(new { ok = true, path = destPath });
-                }
-
-                if (action == "move")
-                {
-                    var sourcePath = root.GetProperty("sourcePath").GetString()!;
-                    var destDir = root.GetProperty("destDir").GetString()!;
-                    var destPath = Path.Combine(destDir, Path.GetFileName(sourcePath));
-                    if (!string.Equals(Path.GetFullPath(sourcePath), Path.GetFullPath(destPath), StringComparison.OrdinalIgnoreCase))
-                    {
-                        if (Directory.Exists(sourcePath)) Directory.Move(sourcePath, destPath);
-                        else File.Move(sourcePath, destPath, true);
-                    }
-                    return Results.Json(new { ok = true, path = destPath });
+                    // Merge-aware copy/move with progress; see Program.Transfers.cs.
+                    return await Task.Run(() => HandleCopyMoveAsync(action, root, ctx.RequestAborted));
                 }
 
                 if (action == "zipCompress")
@@ -2162,6 +2313,91 @@ public class Program
                     }
                 }
 
+                // ---- SSH connection management (see SshManager.cs) ----
+                if (action == "sshList")
+                {
+                    return Results.Json(new { connections = SshManager.List().Select(SshManager.ToDto).ToList() });
+                }
+
+                if (action == "sshAdd")
+                {
+                    string? Str(string name) => root.TryGetProperty(name, out var p) && p.ValueKind == JsonValueKind.String ? p.GetString() : null;
+                    try
+                    {
+                        var conn = SshManager.Add(Str("target") ?? "", Str("label"), Str("keyPath"));
+                        RookLog.Info("ssh", $"Added SSH connection {conn.User}@{conn.Host}:{conn.Port}");
+                        return Results.Json(new { connection = SshManager.ToDto(conn) });
+                    }
+                    catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or FileNotFoundException)
+                    {
+                        return Results.Json(new { error = ex.Message }, statusCode: 400);
+                    }
+                }
+
+                if (action == "sshRemove" || action == "sshConnect" || action == "sshDisconnect" || action == "sshResetHostKey" || action == "sshDrives")
+                {
+                    var id = root.TryGetProperty("id", out var idProp) && idProp.ValueKind == JsonValueKind.String ? idProp.GetString() : null;
+                    if (string.IsNullOrWhiteSpace(id)) return Results.Json(new { error = "Missing SSH connection id." }, statusCode: 400);
+
+                    if (action == "sshRemove")
+                    {
+                        return Results.Json(new { ok = SshManager.Remove(id) });
+                    }
+                    if (action == "sshDisconnect")
+                    {
+                        SshManager.Disconnect(id);
+                        return Results.Json(new { ok = true });
+                    }
+                    if (action == "sshResetHostKey")
+                    {
+                        try { SshManager.ResetHostKey(id); }
+                        catch (KeyNotFoundException ex) { return Results.Json(new { error = ex.Message }, statusCode: 404); }
+                        return Results.Json(new { ok = true });
+                    }
+
+                    if (action == "sshDrives")
+                    {
+                        // Disks mounted on the remote host, so each one can be browsed like a local drive.
+                        try
+                        {
+                            var client = await SshManager.GetClientAsync(id, ctx.RequestAborted);
+                            var drives = await Task.Run(() => ListRemoteDrives(client, id), ctx.RequestAborted);
+                            return Results.Json(new { drives });
+                        }
+                        catch (KeyNotFoundException ex)
+                        {
+                            return Results.Json(new { error = ex.Message }, statusCode: 404);
+                        }
+                        catch (Exception ex) when (ex is not OperationCanceledException)
+                        {
+                            RookLog.Warn("ssh", $"SSH drive listing failed for {id}", ex.Message);
+                            return Results.Json(new { error = ex.Message }, statusCode: 502);
+                        }
+                    }
+
+                    // sshConnect: open (or reuse) the SFTP session and report the remote home directory.
+                    try
+                    {
+                        var client = await SshManager.GetClientAsync(id, ctx.RequestAborted);
+                        var home = SshManager.NormalizeRemotePath(client.WorkingDirectory ?? "/");
+                        var conn = SshManager.Get(id)!;
+                        return Results.Json(new
+                        {
+                            connection = SshManager.ToDto(conn),
+                            homePath = SshManager.BuildPath(id, home),
+                        });
+                    }
+                    catch (KeyNotFoundException ex)
+                    {
+                        return Results.Json(new { error = ex.Message }, statusCode: 404);
+                    }
+                    catch (Exception ex) when (ex is not OperationCanceledException)
+                    {
+                        RookLog.Warn("ssh", $"SSH connect failed for {id}", ex.Message);
+                        return Results.Json(new { error = ex.Message }, statusCode: 502);
+                    }
+                }
+
                 if (action == "gitStatus")
                 {
                     return Results.Json(new { branch = (string?)null, statuses = new Dictionary<string, string>() });
@@ -2256,6 +2492,11 @@ public class Program
                 }
 
                 return Results.NotFound(new { error = "Unknown action" });
+            }
+            catch (OperationCanceledException)
+            {
+                // A transfer cancelled from the UI, or the page dropped the request.
+                return Results.Json(new { error = "Cancelled" }, statusCode: 499);
             }
             catch (Exception ex)
             {
@@ -2361,6 +2602,7 @@ window.__ROOK_LOGGING_ENABLED__ = {(RookLog.Enabled ? "true" : "false")};
             ctx.Response.StatusCode = 404;
         });
 
+        _ = Task.Run(CleanupSshTemp);
         app.StartAsync().GetAwaiter().GetResult();
         var url = app.Urls.First();
 
@@ -2369,6 +2611,7 @@ window.__ROOK_LOGGING_ENABLED__ = {(RookLog.Enabled ? "true" : "false")};
         Application.Run(MainWindow);
 
         RookLog.Info("lifecycle", "Host shutting down");
+        SshManager.DisconnectAll();
         app.StopAsync().GetAwaiter().GetResult();
     }
 }

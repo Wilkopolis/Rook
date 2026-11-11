@@ -13,6 +13,7 @@ const THUMB_SUPPORTED_EXTS = new Set([
   'bmp',
   'ico',
   'svg',
+  'psd',
   'mp4',
   'webm',
   'mov',

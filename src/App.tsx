@@ -1,6 +1,6 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+﻿import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { useExplorerStore } from './store/useExplorerStore';
+import { OptionsCategory, useExplorerStore } from './store/useExplorerStore';
 import { RibbonHeader } from './components/RibbonHeader';
 import { SidebarPane } from './components/SidebarPane';
 import { TabBar } from './components/TabBar';
@@ -10,6 +10,9 @@ import { TerminalDrawer } from './components/TerminalDrawer';
 import { ContextMenu } from './components/ContextMenu';
 import { KenneyIcon } from './components/KenneyIcon';
 import { ExtensionIconMap } from './components/ExtensionIconMap';
+import { SshHostsPanel } from './components/SshHostsPanel';
+import { TransferBar } from './components/TransferBar';
+import { ConflictDialog } from './components/ConflictDialog';
 import { formatBytes } from './utils/format';
 import { naturalCompare } from './utils/naturalSort';
 import { fsService } from './services/fsService';
@@ -36,6 +39,8 @@ export const App: React.FC = () => {
     contextMenu,
     promptModal,
     showOptionsModal,
+    optionsInitialCategory,
+    clearOptionsInitialCategory,
     showHiddenFiles,
     thumbStats,
     folderSizeStats,
@@ -79,11 +84,19 @@ export const App: React.FC = () => {
     cancelDeleteSelected,
     dropEntriesToDir,
     dropUrlToDir,
+    hiddenDrives,
+    unhideDrive,
   } = useExplorerStore();
 
   const [maxCacheMbInput, setMaxCacheMbInput] = useState<string>('250');
   const [promptInput, setPromptInput] = useState<string>('');
-  const [settingsCategory, setSettingsCategory] = useState<'appearance' | 'files' | 'storage' | 'diagnostics'>('appearance');
+  const [settingsCategory, setSettingsCategory] = useState<OptionsCategory>('appearance');
+  useEffect(() => {
+    if (showOptionsModal && optionsInitialCategory) {
+      setSettingsCategory(optionsInitialCategory);
+      clearOptionsInitialCategory();
+    }
+  }, [showOptionsModal, optionsInitialCategory, clearOptionsInitialCategory]);
   const promptInputRef = useRef<HTMLInputElement | null>(null);
   const [currentZoom, setCurrentZoom] = useState<number>(1.0);
 
@@ -231,6 +244,17 @@ export const App: React.FC = () => {
 
   // Keyboard & Mouse Side-Button Navigation
   useEffect(() => {
+    // Split layout: shortcuts go to the active panel (store reads fresh state, not this closure).
+    const splitApi = () => useExplorerStore.getState();
+    const splitActive = () => {
+      const s = splitApi();
+      if (s.layout !== 'split') return null;
+      const tab = s.tabs.find((t) => t.id === s.activeTabId);
+      const index = tab?.activeSplitPanel ?? 0;
+      const panel = tab?.splitPanels?.[index];
+      return panel ? { index, panel } : null;
+    };
+
     const onKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
       const isInput =
@@ -244,11 +268,13 @@ export const App: React.FC = () => {
         if (e.key === '2') { e.preventDefault(); setLayout('thumbnails'); }
         if (e.key === '3') { e.preventDefault(); setLayout('miller'); }
         if (e.key === '4') { e.preventDefault(); setLayout('dualpane'); }
-        if (e.key === '5') { e.preventDefault(); setLayout('faceted'); }
-        if (e.key === '6') { e.preventDefault(); setLayout('command'); }
-        if (e.key === 'ArrowLeft') { e.preventDefault(); goBack(); }
-        if (e.key === 'ArrowRight') { e.preventDefault(); goForward(); }
-        if (e.key === 'ArrowUp') { e.preventDefault(); goUp(); }
+        if (e.key === '5') { e.preventDefault(); setLayout('split'); }
+        if (e.key === '6') { e.preventDefault(); setLayout('faceted'); }
+        if (e.key === '7') { e.preventDefault(); setLayout('command'); }
+        // In the split layout, history navigation targets the active panel.
+        if (e.key === 'ArrowLeft') { e.preventDefault(); if (!splitApi().splitNavigateHistory('back')) goBack(); }
+        if (e.key === 'ArrowRight') { e.preventDefault(); if (!splitApi().splitNavigateHistory('forward')) goForward(); }
+        if (e.key === 'ArrowUp') { e.preventDefault(); if (!splitApi().splitNavigateHistory('up')) goUp(); }
       }
       if (e.ctrlKey || e.metaKey) {
         const key = e.key.toLowerCase();
@@ -261,21 +287,23 @@ export const App: React.FC = () => {
         if (!isInput) {
           if (key === 'a') {
             e.preventDefault();
-            selectAll(visibleItems.map((i) => i.path));
+            if (!splitApi().splitSelectAll()) selectAll(visibleItems.map((i) => i.path));
           } else if (key === 'n' && e.shiftKey) {
             e.preventDefault();
             openPromptModal({
               kind: 'newFolder',
               title: 'Create New Folder',
-              subtitle: `In ${currentPath}`,
+              subtitle: `In ${splitActive()?.panel.path ?? currentPath}`,
               defaultValue: 'New Folder',
               isDirectory: true,
             });
           } else if (key === 'c' && !window.getSelection()?.toString()) {
             e.preventDefault();
+            splitApi().bridgeSplitSelection();
             copyToClipboard();
           } else if (key === 'x') {
             e.preventDefault();
+            splitApi().bridgeSplitSelection();
             cutToClipboard();
           } else if (key === 'v') {
             e.preventDefault();
@@ -296,15 +324,21 @@ export const App: React.FC = () => {
         !pendingDeletePath &&
         !showOptionsModal &&
         !promptModal &&
-        selectedPath
+        (splitActive() ? splitActive()!.panel.selectedPath : selectedPath)
       ) {
         e.preventDefault();
-        const entry = items.find((i) => i.path === selectedPath);
-        const currentName = entry?.name || selectedPath.split(/[\\/]/).pop() || '';
+        // renameSelected works on the global selection, so mirror the active panel into it first.
+        const split = splitActive();
+        splitApi().bridgeSplitSelection();
+        const renamePath = (split ? split.panel.selectedPath : selectedPath) as string;
+        const entry = (split ? splitApi().splitPanelItems[split.index] : items).find(
+          (i) => i.path === renamePath
+        );
+        const currentName = entry?.name || renamePath.split(/[\\/]/).pop() || '';
         openPromptModal({
           kind: 'rename',
           title: 'Rename Item',
-          subtitle: selectedPath,
+          subtitle: renamePath,
           defaultValue: currentName,
           isDirectory: entry?.isDirectory,
         });
@@ -320,8 +354,16 @@ export const App: React.FC = () => {
       ) {
         const orderedPaths = visibleItems.map((i) => i.path);
         const currentIndex = visibleItems.findIndex((i) => i.path === selectedPath);
+        const inSplit = splitActive() !== null;
 
-        if (
+        if (inSplit) {
+          const api = splitApi();
+          if (e.key === 'ArrowDown') { e.preventDefault(); api.splitMoveSelection('next', e.shiftKey); }
+          else if (e.key === 'ArrowUp') { e.preventDefault(); api.splitMoveSelection('prev', e.shiftKey); }
+          else if (e.key === 'Home') { e.preventDefault(); api.splitMoveSelection('first', e.shiftKey); }
+          else if (e.key === 'End') { e.preventDefault(); api.splitMoveSelection('last', e.shiftKey); }
+          else if (e.key === 'Backspace') { e.preventDefault(); api.splitNavigateHistory('up'); }
+        } else if (
           (e.key === 'ArrowDown' ||
             ((layout === 'thumbnails' || layout === 'faceted') && e.key === 'ArrowRight')) &&
           visibleItems.length > 0
@@ -368,14 +410,24 @@ export const App: React.FC = () => {
         !showOptionsModal &&
         !promptModal
       ) {
-        const entry = items.find((i) => i.path === selectedPath);
-        if (entry) {
-          e.preventDefault();
-          openEntry(entry);
+        const split = splitActive();
+        if (split) {
+          if (split.panel.selectedPath) {
+            e.preventDefault();
+            splitApi().splitOpenSelected();
+          }
+        } else {
+          const entry = items.find((i) => i.path === selectedPath);
+          if (entry) {
+            e.preventDefault();
+            openEntry(entry);
+          }
         }
       }
       if (e.key === 'Delete' && !isInput && !promptModal) {
         e.preventDefault();
+        // Confirmation, Recycle Bin vs. permanent (Shift+Del) and undo behavior stay in the store.
+        splitApi().bridgeSplitSelection();
         requestDeleteSelected(e.shiftKey ? true : false);
       }
       if (e.key === 'Escape') {
@@ -399,10 +451,10 @@ export const App: React.FC = () => {
       // Mouse Button 3 = Back (XButton1), Mouse Button 4 = Forward (XButton2)
       if (e.button === 3) {
         e.preventDefault();
-        goBack();
+        if (!splitApi().splitNavigateHistory('back')) goBack();
       } else if (e.button === 4) {
         e.preventDefault();
-        goForward();
+        if (!splitApi().splitNavigateHistory('forward')) goForward();
       }
     };
 
@@ -544,6 +596,7 @@ export const App: React.FC = () => {
                 {([
                   ['appearance', 'Appearance'],
                   ['files', 'Files & Folders'],
+                  ['network', 'SSH Hosts'],
                   ['storage', 'Storage & Cache'],
                   ['diagnostics', 'Diagnostics'],
                 ] as const).map(([id, label]) => (
@@ -591,6 +644,29 @@ export const App: React.FC = () => {
                     className="w-4 h-4 accent-[var(--primary)] cursor-pointer"
                   />
                 </div>
+                <div className="p-2.5 rounded-lg bg-[var(--background)] border border-[var(--border)] space-y-2">
+                  <div>
+                    <div className="font-medium text-[var(--foreground)]">Hidden Drives</div>
+                    <div className="text-[var(--muted-foreground)]">Drives hidden from Drives &amp; Mounts in the sidebar</div>
+                  </div>
+                  {hiddenDrives.length === 0 ? (
+                    <div className="text-[var(--muted-foreground)] italic">No hidden drives</div>
+                  ) : (
+                    <ul className="space-y-1">
+                      {hiddenDrives.map((drive) => (
+                        <li key={drive} className="flex items-center justify-between gap-2">
+                          <span className="font-mono text-xs truncate">{drive}</span>
+                          <button
+                            onClick={() => unhideDrive(drive)}
+                            className="h-7 px-3 rounded-md bg-[var(--card)] border border-[var(--border)] hover:border-[var(--primary)] font-medium text-xs cursor-pointer transition-colors"
+                          >
+                            Unhide
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
                 <ExtensionIconMap />
                 </>)}
 
@@ -625,6 +701,8 @@ export const App: React.FC = () => {
                   </div>
                 </div>
                 )}
+
+                {settingsCategory === 'network' && <SshHostsPanel />}
 
                 {settingsCategory === 'storage' && (<>
                 <div className="p-2.5 rounded-lg bg-[var(--background)] border border-[var(--border)] space-y-2.5">
@@ -879,67 +957,58 @@ export const App: React.FC = () => {
         {/* Delete Confirmation Prompt Modal */}
         {pendingDeletePath && (
           <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-            <div className="bg-[var(--card)] border border-[var(--border)] rounded-xl shadow-2xl max-w-md w-full p-5 space-y-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg bg-red-950/50 border border-red-500/40 flex items-center justify-center shrink-0">
-                  <KenneyIcon name="trashcan" size={20} />
-                </div>
-                <div>
-                  <h3 className="text-sm font-semibold text-[var(--foreground)]">
-                    {deletePermanently ? 'Confirm Permanent Delete' : 'Move to Recycle Bin'}
-                  </h3>
-                  <p className="text-xs text-[var(--muted-foreground)] mt-0.5">
-                    {pendingDeletePaths.length > 1 ? (
-                      <>
-                        Are you sure you want to {deletePermanently ? 'permanently delete' : 'recycle'}{' '}
-                        <strong className="text-[var(--foreground)]">
-                          {pendingDeletePaths.length} selected items
-                        </strong>
-                        ?
-                      </>
-                    ) : (
-                      <>
-                        Are you sure you want to {deletePermanently ? 'permanently delete' : 'recycle'}{' '}
-                        <strong className="text-[var(--foreground)]">"{pendingDeleteName}"</strong>?
-                      </>
-                    )}
-                  </p>
-                </div>
+            <div className="bg-[var(--card)] border border-[var(--border)] shadow-2xl max-w-sm w-full">
+              <div className="flex items-center gap-2 px-3 py-2 border-b border-[var(--border)] bg-[var(--sidebar)]">
+                <KenneyIcon name="trashcan" size={16} />
+                <h3 className={`text-xs font-semibold flex-1 truncate ${deletePermanently ? 'text-[var(--danger-text)]' : 'text-[var(--foreground)]'}`}>
+                  {pendingDeletePaths.length > 1 ? `${pendingDeletePaths.length} items` : pendingDeleteName}
+                </h3>
               </div>
-              <div className="text-xs font-mono bg-[var(--background)] border border-[var(--border)] rounded p-2 text-[var(--muted-foreground)] break-all max-h-28 overflow-y-auto space-y-1">
-                {(pendingDeletePaths.length > 0 ? pendingDeletePaths : [pendingDeletePath]).map((p) => (
-                  <div key={p} className="truncate">
-                    {p}
-                  </div>
-                ))}
+              <div className="p-3 space-y-2">
+                <div className="text-[11px] font-mono bg-[var(--background)] border border-[var(--border)] px-2 py-1 text-[var(--muted-foreground)] max-h-24 overflow-y-auto">
+                  {(pendingDeletePaths.length > 0 ? pendingDeletePaths : [pendingDeletePath]).map((p) => (
+                    <div key={p} className="truncate" title={p}>
+                      {p}
+                    </div>
+                  ))}
+                </div>
+                <label
+                  className="flex items-center gap-2 text-xs text-[var(--muted-foreground)] cursor-pointer select-none"
+                  title="Skip the Recycle Bin (Shift+Del)"
+                >
+                  <input
+                    type="checkbox"
+                    checked={deletePermanently}
+                    onChange={(e) => setDeletePermanently(e.target.checked)}
+                    className="w-3.5 h-3.5 rounded-none accent-[var(--danger)] cursor-pointer"
+                  />
+                  <span>Permanent</span>
+                  <span className="ml-auto text-[10px] opacity-70">Shift+Del</span>
+                </label>
               </div>
-              <label className="flex items-center gap-2 text-xs text-[var(--muted-foreground)] cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={deletePermanently}
-                  onChange={(e) => setDeletePermanently(e.target.checked)}
-                  className="w-4 h-4 accent-red-500 cursor-pointer"
-                />
-                <span>Permanently delete (skip Windows Recycle Bin — Shift+Del)</span>
-              </label>
-              <div className="flex items-center justify-end gap-2 pt-2">
+              <div className="flex items-center justify-end gap-1.5 px-3 py-2 border-t border-[var(--border)] bg-[var(--sidebar)]">
                 <button
                   onClick={cancelDeleteSelected}
-                  className="h-8 px-4 rounded-md border border-[var(--border)] bg-[var(--background)] text-xs font-medium text-[var(--foreground)] hover:opacity-80 cursor-pointer flex items-center justify-center transition-colors"
+                  title="Cancel (Esc)"
+                  className="h-7 px-3 border border-[var(--border)] bg-[var(--background)] text-xs text-[var(--foreground)] hover:bg-[var(--card)] cursor-pointer transition-colors"
                 >
-                  Cancel (Esc)
+                  Cancel
                 </button>
                 <button
                   onClick={confirmDeleteSelected}
-                  className="h-8 px-4 rounded-md bg-red-900/60 hover:bg-red-800/80 border border-red-500/40 text-white text-xs font-semibold cursor-pointer flex items-center gap-1.5 justify-center transition-colors"
+                  title={deletePermanently ? 'Delete permanently' : 'Move to Recycle Bin'}
+                  className="h-7 px-3 bg-[var(--danger)] hover:bg-[var(--danger-hover)] text-white text-xs font-semibold cursor-pointer flex items-center gap-1.5 transition-colors"
                 >
-                  <KenneyIcon name="trashcan" size={14} />
-                  <span>{deletePermanently ? 'Delete Permanently' : 'Move to Recycle Bin'}</span>
+                  <KenneyIcon name="trashcan" size={13} />
+                  <span>{deletePermanently ? 'Delete' : 'Recycle'}</span>
                 </button>
               </div>
             </div>
           </div>
         )}
+
+        <TransferBar />
+        <ConflictDialog />
 
         <footer className="bg-[var(--sidebar)] border-t border-[var(--border)] px-3 py-1.5 flex items-center justify-between text-xs text-[var(--muted-foreground)] select-none shrink-0">
           <div className="flex items-center gap-3">

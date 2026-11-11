@@ -11,19 +11,77 @@ import {
   QuickAccessFolder,
   SidebarSectionId,
   SortField,
+  SplitPanelIndex,
+  SplitPanelState,
+  SshAddRequest,
+  SshConnectResult,
+  SshConnection,
+  SshDrive,
   ThumbCacheStats,
+  ConflictPolicy,
+  TransferItemOptions,
+  TransferItemResult,
+  TransferPlan,
   Workflow,
 } from '../types/fs';
 import { fsService } from '../services/fsService';
 import { logger } from '../services/logger';
 import { inferTags } from '../utils/format';
+import { visibleSplitItems } from '../utils/splitPanels';
 import { generateUrlShortcutName, buildInternetShortcutContent } from '../utils/dragDrop';
+
+/** Tabs of the options modal (App.tsx). */
+export type OptionsCategory = 'appearance' | 'files' | 'network' | 'storage' | 'diagnostics';
 
 export type UndoOperation =
   | { kind: 'rename'; currentPath: string; oldName: string }
   | { kind: 'move'; moves: { currentPath: string; originalDir: string }[] }
   | { kind: 'copy'; createdPaths: string[] }
   | { kind: 'create'; createdPath: string };
+
+/** A copy/move batch in flight, shown by TransferBar. */
+export interface HistoryViewState {
+  path: string;
+  scrollTop: number;
+  selectedPath: string | null;
+  selectedPaths: string[];
+}
+
+export interface TransferState {
+  id: string;
+  kind: 'copy' | 'move';
+  destDir: string;
+  /** Top-level items of the batch (what the user selected). */
+  totalItems: number;
+  doneItems: number;
+  /** Byte and file counts come from the host; they stay 0 when it doesn't track progress (dev server). */
+  totalBytes: number;
+  doneBytes: number;
+  totalFiles: number;
+  doneFiles: number;
+  /** Already at the destination: counted toward progress, not copied. */
+  skippedBytes: number;
+  skippedFiles: number;
+  currentName: string;
+  /** The host is still totalling the batch, so totalBytes/totalFiles are not final. */
+  scanning: boolean;
+  bytesPerSec: number;
+  /** False for the first moments, so instant operations never flash the bar. */
+  visible: boolean;
+  cancelling: boolean;
+}
+
+/** A copy/move waiting for the user to decide what happens to files that already exist. */
+export interface ConflictPrompt {
+  kind: 'copy' | 'move';
+  destDir: string;
+  itemCount: number;
+  plan: TransferPlan;
+}
+
+export type ConflictDecision =
+  | { action: 'cancel' }
+  | { action: ConflictPolicy; verifySameSize: boolean };
 
 export interface PromptModalConfig {
   kind: 'newFolder' | 'newFile' | 'rename' | 'addTag';
@@ -54,17 +112,42 @@ interface ExplorerState {
   isLoading: boolean;
   error: string | null;
   statusMessage: string | null;
+  /**
+   * Session-only scroll offsets keyed by folder path. Never persisted: not in `SavedSession`,
+   * `persistSession`, `rook_*` localStorage keys, workflows, or `ui-state.json`.
+   */
+  folderScrollPositions: Record<string, number>;
+  setFolderScrollPosition: (path: string, offset: number) => void;
+  /**
+   * Session-only view state saved when leaving a history entry, keyed `${tabId}:${historyIndex}`.
+   * Never persisted (same rules as `folderScrollPositions`). Read by the restore tasks.
+   */
+  historyViewStates: Record<string, HistoryViewState>;
+  /** Snapshots scroll + selection of the active tab's current history entry. */
+  captureHistoryView: () => void;
 
   // Dual-Pane right side state
   rightPanePath: string;
   rightPaneItems: FsEntry[];
+  /** Dual-pane right side sorts independently from the left pane (session-only). */
+  rightSortBy: SortField;
+  rightSortAsc: boolean;
   activePane: 'left' | 'right';
+
+  // Split layout: per-panel listings for the active tab (session-only; paths,
+  // history and selection live on `ExplorerTab.splitPanels`).
+  splitPanelItems: [FsEntry[], FsEntry[]];
+  splitPanelErrors: [string | null, string | null];
 
   // Selection, Clipboard, Undo & Preview
   selectedPath: string | null;
   selectedPaths: string[];
   clipboard: { paths: string[]; mode: 'copy' | 'cut' } | null;
   undoStack: UndoOperation[];
+  transfers: TransferState[];
+  cancelTransfer: (id: string) => void;
+  conflictPrompt: ConflictPrompt | null;
+  resolveConflictPrompt: (decision: ConflictDecision) => void;
   preview: FilePreview | null;
   pendingDeletePath: string | null;
   pendingDeletePaths: string[];
@@ -84,6 +167,15 @@ interface ExplorerState {
   isSearching: boolean;
   dirVersion: number;
   sidebarSectionOrder: SidebarSectionId[];
+  /** Drive roots (e.g. `D:\`) hidden from the Drives and Mounts section. Persisted. */
+  hiddenDrives: string[];
+  /** Saved SSH hosts. Persisted by the desktop host in %LOCALAPPDATA%/Rook/ssh-connections.json. */
+  sshConnections: SshConnection[];
+  /**
+   * Disks mounted on each SSH host, keyed by connection id. Refreshed on every connect and cached
+   * in localStorage so they stay listed in the sidebar while the host is disconnected.
+   */
+  sshDrives: Record<string, SshDrive[]>;
   pinnedFolders: QuickAccessFolder[];
   workflows: Workflow[];
   activeTagFilter: string;
@@ -92,14 +184,40 @@ interface ExplorerState {
   showTerminal: boolean;
   showQuickLookModal: boolean;
   showOptionsModal: boolean;
+  /** Settings tab to show the next time the options modal opens (consumed by App). */
+  optionsInitialCategory: OptionsCategory | null;
   showHiddenFiles: boolean;
   customTags: Record<string, string[]>;
 
   // Actions
   init: () => Promise<void>;
-  navigateTo: (path: string, pushHistory?: boolean) => Promise<void>;
+  navigateTo: (path: string, pushHistory?: boolean, restoreView?: boolean) => Promise<void>;
   navigateRightPane: (path: string) => Promise<void>;
+  /** Sidebar navigation: goes to the active panel in the split and dual-pane layouts, else the main view. */
+  navigateSidebar: (path: string) => Promise<void>;
   goBack: () => Promise<void>;
+  /** Creates split panels for the active tab if missing and loads both listings. */
+  initSplitPanels: () => Promise<void>;
+  navigateSplitPanel: (index: SplitPanelIndex, path: string, pushHistory?: boolean) => Promise<void>;
+  splitPanelBack: (index: SplitPanelIndex) => Promise<void>;
+  splitPanelForward: (index: SplitPanelIndex) => Promise<void>;
+  splitPanelUp: (index: SplitPanelIndex) => Promise<void>;
+  selectSplitPanelEntry: (
+    index: SplitPanelIndex,
+    entry: FsEntry,
+    opts?: { ctrl?: boolean; shift?: boolean; orderedPaths?: string[] }
+  ) => void;
+  setSplitPanelSelection: (index: SplitPanelIndex, paths: string[]) => void;
+  /** Marks a split panel as the active one for the current tab. */
+  setActiveSplitPanel: (index: SplitPanelIndex) => void;
+  // Keyboard routing: these act on the active split panel and return false when the
+  // split layout isn't showing, so callers can fall back to the single-view behavior.
+  splitNavigateHistory: (dir: 'back' | 'forward' | 'up') => boolean;
+  splitMoveSelection: (to: 'next' | 'prev' | 'first' | 'last', shift: boolean) => boolean;
+  splitSelectAll: () => boolean;
+  splitOpenSelected: () => boolean;
+  /** Copies the active panel's selection into the global selection used by copy/cut/delete/rename. */
+  bridgeSplitSelection: () => boolean;
   goForward: () => Promise<void>;
   goUp: () => Promise<void>;
   refresh: () => Promise<void>;
@@ -108,6 +226,20 @@ interface ExplorerState {
   toggleDeepSearch: () => void;
   // Quick Access & Workflows
   reorderSidebarSections: (order: SidebarSectionId[]) => void;
+  hideDrive: (drive: string) => void;
+  unhideDrive: (drive: string) => void;
+  loadSshConnections: () => Promise<void>;
+  /** Saves a new SSH host. Throws with the host's message on invalid input or a duplicate. */
+  addSshConnection: (req: SshAddRequest) => Promise<SshConnection>;
+  removeSshConnection: (id: string) => Promise<void>;
+  /** Connects to the host to check the key works. Throws with the host's message on failure. */
+  testSshConnection: (id: string) => Promise<SshConnectResult>;
+  resetSshHostKey: (id: string) => Promise<void>;
+  /** Connects to a saved host and browses its home folder (or `/` when requested). */
+  openSshHost: (id: string, at?: 'home' | 'root' | { path: string }) => Promise<void>;
+  /** Re-reads the host's mounted disks (connects if needed). Failures keep the cached list. */
+  loadSshDrives: (id: string) => Promise<void>;
+  disconnectSsh: (id: string) => Promise<void>;
   reorderQuickAccessFolders: (folders: QuickAccessFolder[]) => void;
   reorderWorkflows: (workflows: Workflow[]) => void;
   togglePinFolder: (folderPath?: string) => void;
@@ -149,7 +281,8 @@ interface ExplorerState {
   // Clipboard & Undo Actions
   copyToClipboard: () => void;
   cutToClipboard: () => void;
-  pasteClipboard: (targetDir?: string) => Promise<void>;
+  /** `viaRemote`: have the destination SSH host copy from the network share itself (see `remoteCopyCheck`). */
+  pasteClipboard: (targetDir?: string, viaRemote?: boolean) => Promise<void>;
   undoLastOperation: () => Promise<void>;
 
   // Tab Actions
@@ -166,6 +299,7 @@ interface ExplorerState {
   setExtensionIcon: (ext: string, icon: string, color: string) => void;
   resetExtensionIcon: (ext: string) => void;
   setSortBy: (field: SortField) => void;
+  setRightSortBy: (field: SortField) => void;
   toggleSortAsc: () => void;
   setFilterQuery: (q: string) => void;
   setActiveTagFilter: (tag: string) => void;
@@ -174,6 +308,9 @@ interface ExplorerState {
   toggleTerminal: () => void;
   toggleQuickLookModal: () => void;
   toggleOptionsModal: () => void;
+  /** Opens the options modal on a specific settings tab. */
+  openOptionsTo: (category: OptionsCategory) => void;
+  clearOptionsInitialCategory: () => void;
   toggleHiddenFiles: () => void;
   setDeletePermanently: (perm: boolean) => void;
   setActivePane: (pane: 'left' | 'right') => void;
@@ -197,6 +334,57 @@ interface ExplorerState {
   openPowershellCurrent: () => Promise<void>;
 }
 
+const newSplitPanel = (path: string): SplitPanelState => ({
+  path,
+  history: [path],
+  historyIndex: 0,
+  selectedPath: null,
+  selectedPaths: [],
+});
+
+const parentOf = (p: string): string | null => {
+  const trimmed = p.replace(/[\\/]+$/, '');
+  const idx = Math.max(trimmed.lastIndexOf('\\'), trimmed.lastIndexOf('/'));
+  if (idx < 0) return null;
+  const parent = trimmed.slice(0, idx);
+  // Drive root: "C:" -> "C:\"
+  return /^[A-Za-z]:$/.test(parent) ? parent + '\\' : parent || null;
+};
+
+/** The active split panel of the active tab, or null when the split layout isn't showing. */
+const activeSplitTarget = (
+  s: Pick<ExplorerState, 'layout' | 'tabs' | 'activeTabId'>
+): { index: SplitPanelIndex; panel: SplitPanelState } | null => {
+  if (s.layout !== 'split') return null;
+  const tab = s.tabs.find((t) => t.id === s.activeTabId);
+  if (!tab?.splitPanels) return null;
+  const index: SplitPanelIndex = tab.activeSplitPanel ?? 0;
+  return { index, panel: tab.splitPanels[index] };
+};
+
+/** Range / ctrl-toggle selection shared by the main view and split panels. */
+const computeSelection = (
+  anchor: string | null,
+  current: string[],
+  target: string,
+  opts?: { ctrl?: boolean; shift?: boolean; orderedPaths?: string[] }
+): string[] => {
+  if (opts?.shift && anchor && opts.orderedPaths && opts.orderedPaths.length > 0) {
+    const startIdx = opts.orderedPaths.indexOf(anchor);
+    const endIdx = opts.orderedPaths.indexOf(target);
+    if (startIdx !== -1 && endIdx !== -1) {
+      return opts.orderedPaths.slice(Math.min(startIdx, endIdx), Math.max(startIdx, endIdx) + 1);
+    }
+  } else if (opts?.ctrl) {
+    if (current.includes(target)) {
+      const filtered = current.filter((p) => p !== target);
+      return filtered.length > 0 ? filtered : [target];
+    }
+    return [...current, target];
+  }
+  return [target];
+};
+
 const SESSION_KEY = 'rook_session_v1';
 
 interface SavedSession {
@@ -219,6 +407,11 @@ const loadSavedSession = (): SavedSession => {
   }
 };
 
+/**
+ * Writes the session snapshot to localStorage. Only the explicit fields below are saved.
+ * Never spread the whole store (or add session-only fields such as `folderScrollPositions`)
+ * here: scroll offsets are per-session and must not reach disk.
+ */
 const persistSession = (state: Partial<ExplorerState>) => {
   try {
     const prev = loadSavedSession();
@@ -489,7 +682,250 @@ const savedSectionOrder = (): SidebarSectionId[] => {
   return defaultSectionOrder;
 };
 
+const HIDDEN_DRIVES_KEY = 'rook_hidden_drives_v1';
+const SSH_DRIVES_KEY = 'rook_ssh_drives_v1';
+
+const savedSshDrives = (): Record<string, SshDrive[]> => {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(SSH_DRIVES_KEY) || '{}');
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      const out: Record<string, SshDrive[]> = {};
+      for (const [id, list] of Object.entries(parsed)) {
+        if (!Array.isArray(list)) continue;
+        out[id] = list.filter(
+          (d): d is SshDrive => !!d && typeof d.path === 'string' && typeof d.mountPoint === 'string'
+        );
+      }
+      return out;
+    }
+  } catch {}
+  return {};
+};
+
+const persistSshDrives = (drives: Record<string, SshDrive[]>) => {
+  try {
+    localStorage.setItem(SSH_DRIVES_KEY, JSON.stringify(drives));
+  } catch {}
+};
+
+const savedHiddenDrives = (): string[] => {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(HIDDEN_DRIVES_KEY) || '[]');
+    if (Array.isArray(parsed)) {
+      return parsed.filter((d): d is string => typeof d === 'string' && d.length > 0);
+    }
+  } catch {}
+  return [];
+};
+
+const sameDrive = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
+
 const initialSession = loadSavedSession();
+
+// ---- Copy/move batches with progress (TransferBar) ----
+
+const patchTransfer = (id: string, patch: Partial<TransferState>) =>
+  useExplorerStore.setState((s) => ({
+    transfers: s.transfers.map((t) => (t.id === id ? { ...t, ...patch } : t)),
+  }));
+
+const leafName = (p: string) => p.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || p;
+
+interface TransferOutcome<T> {
+  /** One result per item that finished, in source order. */
+  results: T[];
+  cancelled: boolean;
+  error: string | null;
+}
+
+let conflictResolver: ((decision: ConflictDecision) => void) | null = null;
+let conflictQueue: Promise<unknown> = Promise.resolve();
+
+/** Shows the conflict dialog (ConflictDialog.tsx) and waits for the answer. One prompt at a time. */
+function askConflictDecision(prompt: ConflictPrompt): Promise<ConflictDecision> {
+  const ask = conflictQueue.then(
+    () =>
+      new Promise<ConflictDecision>((resolve) => {
+        conflictResolver = resolve;
+        useExplorerStore.setState({ conflictPrompt: prompt });
+      })
+  );
+  conflictQueue = ask;
+  return ask;
+}
+
+/**
+ * Runs `op` for each source in turn (transfers are sequential) while publishing progress to
+ * `transfers`. Before anything is touched the destination is checked: files that already exist
+ * with other content are put to the user, identical ones are skipped without asking. Never
+ * throws: a failure or a cancel stops the batch and is reported in the outcome, so callers can
+ * still record the items that did finish on the undo stack.
+ */
+async function runTransfer<T>(
+  kind: 'copy' | 'move',
+  sources: string[],
+  destDir: string,
+  op: (src: string, options: TransferItemOptions) => Promise<T>
+): Promise<TransferOutcome<T>> {
+  // No plan (dev server): requests go out without a policy, and the host refuses to overwrite.
+  let conflictOptions: Pick<TransferItemOptions, 'onConflict' | 'verifySameSize'> = {};
+  try {
+    const plan = await fsService.transferPlan(kind, sources, destDir);
+    if (plan.differentCount + plan.sameSizeCount > 0) {
+      const decision = await askConflictDecision({ kind, destDir, itemCount: sources.length, plan });
+      if (decision.action === 'cancel') return { results: [], cancelled: true, error: null };
+      conflictOptions = { onConflict: decision.action, verifySameSize: decision.verifySameSize };
+    } else {
+      // Nothing to ask. Should a file appear meanwhile, leaving both alone is the safe outcome.
+      conflictOptions = { onConflict: 'skip' };
+    }
+  } catch {
+    // Fall through without a policy.
+  }
+
+  const id = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+  useExplorerStore.setState((s) => ({
+    transfers: [
+      ...s.transfers,
+      {
+        id,
+        kind,
+        destDir,
+        totalItems: sources.length,
+        doneItems: 0,
+        totalBytes: 0,
+        doneBytes: 0,
+        totalFiles: 0,
+        doneFiles: 0,
+        skippedBytes: 0,
+        skippedFiles: 0,
+        currentName: sources.length > 0 ? leafName(sources[0]) : '',
+        scanning: true,
+        bytesPerSec: 0,
+        visible: false,
+        cancelling: false,
+      },
+    ],
+  }));
+  const showTimer = setTimeout(() => patchTransfer(id, { visible: true }), 350);
+  const isCancelling = () => useExplorerStore.getState().transfers.some((t) => t.id === id && t.cancelling);
+
+  // Byte-level progress needs the desktop host; without it the bar falls back to item counts.
+  let tracked = true;
+  try {
+    await fsService.transferStart(id, kind, sources, destDir);
+  } catch {
+    tracked = false;
+    patchTransfer(id, { scanning: false });
+  }
+
+  // Speed (and with it the time-left estimate) is the average over a sliding window, so short
+  // bursts and stalls between samples don't make the readout jump around.
+  const SPEED_WINDOW_MS = 20_000;
+  const samples: { at: number; bytes: number }[] = [{ at: performance.now(), bytes: 0 }];
+  let speed = 0;
+  let polling = false;
+  const poll = async () => {
+    if (polling) return;
+    polling = true;
+    try {
+      const p = await fsService.transferProgress(id);
+      const now = performance.now();
+      samples.push({ at: now, bytes: p.doneBytes });
+      // Keep one sample at or just beyond the window's edge as the baseline.
+      while (samples.length > 2 && now - samples[1].at >= SPEED_WINDOW_MS) samples.shift();
+      const dt = (now - samples[0].at) / 1000;
+      // Wait for a second of data before showing a figure, so the first reading isn't a spike.
+      if (dt >= 1) speed = Math.max(0, p.doneBytes - samples[0].bytes) / dt;
+      patchTransfer(id, {
+        totalBytes: p.totalBytes,
+        doneBytes: p.doneBytes,
+        totalFiles: p.totalFiles,
+        doneFiles: p.doneFiles,
+        skippedBytes: p.skippedBytes ?? 0,
+        skippedFiles: p.skippedFiles ?? 0,
+        scanning: p.scanning,
+        bytesPerSec: speed,
+        ...(p.currentName ? { currentName: p.currentName } : {}),
+      });
+    } catch {
+      // A missed sample is harmless; the next one catches up.
+    } finally {
+      polling = false;
+    }
+  };
+  const pollTimer = tracked ? setInterval(poll, 400) : null;
+
+  const results: T[] = [];
+  let error: string | null = null;
+  let cancelled = false;
+  try {
+    for (let i = 0; i < sources.length; i++) {
+      if (isCancelling()) break;
+      if (!tracked) patchTransfer(id, { currentName: leafName(sources[i]) });
+      results.push(await op(sources[i], { transferId: id, ...conflictOptions }));
+      patchTransfer(id, { doneItems: i + 1 });
+    }
+  } catch (err: any) {
+    if (!isCancelling()) error = err?.message || String(err);
+  } finally {
+    cancelled = isCancelling();
+    clearTimeout(showTimer);
+    if (pollTimer) clearInterval(pollTimer);
+    if (tracked) void fsService.transferEnd(id).catch(() => {});
+    useExplorerStore.setState((s) => ({ transfers: s.transfers.filter((t) => t.id !== id) }));
+  }
+  return { results, cancelled: cancelled && results.length < sources.length, error };
+}
+
+const transferStatus = (
+  verb: 'Copy' | 'Move',
+  outcome: TransferOutcome<{ skipped: number }>,
+  total: number,
+  doneMessage: string
+): string => {
+  const progress = `${outcome.results.length} of ${total} item${total === 1 ? '' : 's'} done`;
+  if (outcome.error) return `${verb} failed (${progress}): ${outcome.error}`;
+  if (outcome.cancelled) return `${verb} cancelled (${progress})`;
+  const skipped = outcome.results.reduce((sum, r) => sum + r.skipped, 0);
+  if (skipped === 0) return doneMessage;
+  return `${doneMessage} — ${skipped} conflicting file${skipped === 1 ? '' : 's'} left as ${skipped === 1 ? 'it was' : 'they were'}`;
+};
+
+const itemOutcome = (res: TransferItemResult) => ({
+  path: res.path,
+  skipped: res.skipped ?? 0,
+  // Merged into something that was already there: undoing it as a unit would take that along.
+  undoable: Boolean(res.path) && !res.merged,
+});
+
+/** Copies `sources` into `destDir` with progress, then records what was created for undo. */
+async function copyItemsTo(sources: string[], destDir: string, doneMessage: string, viaRemote = false): Promise<void> {
+  const outcome = await runTransfer('copy', sources, destDir, async (src, options) =>
+    itemOutcome(await fsService.copyItem(src, destDir, viaRemote ? { ...options, viaRemote } : options))
+  );
+  const createdPaths = outcome.results.filter((r) => r.undoable).map((r) => r.path);
+  useExplorerStore.setState((s) => ({
+    undoStack: createdPaths.length > 0 ? [...s.undoStack, { kind: 'copy', createdPaths }] : s.undoStack,
+    statusMessage: transferStatus('Copy', outcome, sources.length, doneMessage),
+  }));
+}
+
+/** Moves `sources` into `destDir` with progress and records the moves for undo. Returns the sources left unmoved. */
+async function moveItemsTo(sources: string[], destDir: string, doneMessage: string, viaRemote = false): Promise<string[]> {
+  const outcome = await runTransfer('move', sources, destDir, async (src, options) => ({
+    ...itemOutcome(await fsService.moveItem(src, destDir, viaRemote ? { ...options, viaRemote } : options)),
+    originalDir: src.replace(/[\\/][^\\/]+$/, ''),
+  }));
+  const moves = outcome.results
+    .filter((r) => r.undoable)
+    .map((r) => ({ currentPath: r.path, originalDir: r.originalDir }));
+  useExplorerStore.setState((s) => ({
+    undoStack: moves.length > 0 ? [...s.undoStack, { kind: 'move', moves }] : s.undoStack,
+    statusMessage: transferStatus('Move', outcome, sources.length, doneMessage),
+  }));
+  return sources.slice(outcome.results.length);
+}
 
 export const useExplorerStore = create<ExplorerState>((set, get) => ({
   drives: ['C:\\'],
@@ -511,15 +947,58 @@ export const useExplorerStore = create<ExplorerState>((set, get) => ({
   error: null,
   statusMessage: null,
   lastDroppedUrl: null,
+  folderScrollPositions: {},
+  setFolderScrollPosition: (path, offset) =>
+    set((s) => {
+      if (!path) return s;
+      if (offset <= 0) {
+        if (!(path in s.folderScrollPositions)) return s;
+        const { [path]: _removed, ...rest } = s.folderScrollPositions;
+        return { folderScrollPositions: rest };
+      }
+      if (s.folderScrollPositions[path] === offset) return s;
+      return { folderScrollPositions: { ...s.folderScrollPositions, [path]: offset } };
+    }),
+
+  historyViewStates: {},
+  captureHistoryView: () => {
+    const s = get();
+    const tab = s.tabs.find((t) => t.id === s.activeTabId);
+    if (!tab || !s.currentPath) return;
+    const state: HistoryViewState = {
+      path: s.currentPath,
+      scrollTop: s.folderScrollPositions[s.currentPath] ?? 0,
+      selectedPath: s.selectedPath,
+      selectedPaths: [...s.selectedPaths],
+    };
+    set({ historyViewStates: { ...s.historyViewStates, [`${tab.id}:${tab.historyIndex}`]: state } });
+  },
 
   rightPanePath: '',
   rightPaneItems: [],
+  rightSortBy: 'name',
+  rightSortAsc: true,
   activePane: 'left',
+
+  splitPanelItems: [[], []],
+  splitPanelErrors: [null, null],
 
   selectedPath: null,
   selectedPaths: [],
   clipboard: null,
   undoStack: [],
+  transfers: [],
+  conflictPrompt: null,
+  resolveConflictPrompt: (decision: ConflictDecision) => {
+    const resolve = conflictResolver;
+    conflictResolver = null;
+    set({ conflictPrompt: null });
+    resolve?.(decision);
+  },
+  cancelTransfer: (id: string) => {
+    patchTransfer(id, { cancelling: true });
+    void fsService.transferCancel(id).catch(() => {});
+  },
   preview: null,
   pendingDeletePath: null,
   pendingDeletePaths: [],
@@ -539,6 +1018,9 @@ export const useExplorerStore = create<ExplorerState>((set, get) => ({
   isSearching: false,
   dirVersion: 0,
   sidebarSectionOrder: savedSectionOrder(),
+  hiddenDrives: savedHiddenDrives(),
+  sshConnections: [],
+  sshDrives: savedSshDrives(),
   pinnedFolders: savedQuickAccessFolders(),
   workflows: savedWorkflows(),
   activeTagFilter: 'all',
@@ -547,6 +1029,7 @@ export const useExplorerStore = create<ExplorerState>((set, get) => ({
   showTerminal: false,
   showQuickLookModal: false,
   showOptionsModal: false,
+  optionsInitialCategory: null,
   showHiddenFiles: initialSession.showHiddenFiles ?? true,
   customTags: savedTags(),
 
@@ -586,6 +1069,7 @@ export const useExplorerStore = create<ExplorerState>((set, get) => ({
       await get().refreshThumbStats();
       await get().refreshFolderSizeStats();
       await get().refreshLogSettings();
+      await get().loadSshConnections();
     } catch (err: any) {
       set({ error: err.message, isLoading: false });
     }
@@ -653,7 +1137,40 @@ export const useExplorerStore = create<ExplorerState>((set, get) => ({
     await get().refresh();
   },
 
-  navigateTo: async (targetPath: string, pushHistory = true) => {
+  navigateSidebar: async (targetPath: string) => {
+    const s = get();
+    if (s.layout === 'split') {
+      const target = activeSplitTarget(s);
+      if (target) return s.navigateSplitPanel(target.index, targetPath);
+    }
+    if (s.layout === 'dualpane' && s.activePane === 'right') {
+      return s.navigateRightPane(targetPath);
+    }
+    return s.navigateTo(targetPath);
+  },
+
+  navigateTo: async (targetPath: string, pushHistory = true, restoreView = false) => {
+    // Leaving the current entry for a new one; back/forward capture in goBack/goForward.
+    if (pushHistory) get().captureHistoryView();
+    // Saved view of the entry we are returning to (back/forward: the new current entry;
+    // Up: the latest earlier entry for the same folder).
+    let historyView: HistoryViewState | undefined;
+    if (restoreView) {
+      const { tabs: ts, activeTabId: aid, historyViewStates: hvs } = get();
+      const tb = ts.find((t) => t.id === aid);
+      if (tb) {
+        const want = targetPath.toLowerCase();
+        const start = tb.historyIndex;
+        const stop = pushHistory ? 0 : start;
+        for (let i = start; i >= stop; i--) {
+          const v = hvs[`${tb.id}:${i}`];
+          if (v && (!pushHistory || v.path.toLowerCase() === want)) {
+            historyView = v;
+            break;
+          }
+        }
+      }
+    }
     set({ isLoading: true, error: null });
     try {
       const res = await fsService.listDirectory(targetPath);
@@ -685,6 +1202,14 @@ export const useExplorerStore = create<ExplorerState>((set, get) => ({
         }
         const nextHistory = t.history.slice(0, t.historyIndex + 1);
         nextHistory.push(res.path);
+        // Forward entries are discarded, so drop their saved view state too.
+        const prefix = `${t.id}:`;
+        const kept: Record<string, HistoryViewState> = {};
+        for (const [k, v] of Object.entries(get().historyViewStates)) {
+          if (k.startsWith(prefix) && Number(k.slice(prefix.length)) > t.historyIndex) continue;
+          kept[k] = v;
+        }
+        set({ historyViewStates: kept });
         return {
           ...t,
           path: res.path,
@@ -712,7 +1237,16 @@ export const useExplorerStore = create<ExplorerState>((set, get) => ({
         dirVersion: typeof res.version === 'number' ? res.version : get().dirVersion,
         deepSearchResults: null,
         isLoading: false,
-        ...(savedView && { layout: savedView.layout }),
+        // Applied with currentPath/items in one commit; LayoutsView reads this map in a layout
+        // effect keyed on currentPath, so the entry's own offset wins over the per-folder one.
+        ...(historyView && {
+          folderScrollPositions: (() => {
+            const { [res.path]: _drop, ...rest } = get().folderScrollPositions;
+            return historyView.scrollTop > 0 ? { ...rest, [res.path]: historyView.scrollTop } : rest;
+          })(),
+        }),
+        ...(savedView?.layout && { layout: savedView.layout }),
+        ...(savedView?.sortBy && { sortBy: savedView.sortBy, sortAsc: savedView.sortAsc ?? true }),
         ...(openedFolder && { thumbGridSize: savedView?.thumbSize ?? savedThumbGridSize() }),
       });
       persistSession({ tabs: updatedTabs, activeTabId, layout: get().layout });
@@ -721,8 +1255,19 @@ export const useExplorerStore = create<ExplorerState>((set, get) => ({
         get().runDeepSearch(get().filterQuery);
       }
 
+      const restoredEntry = historyView?.selectedPath
+        ? enriched.find((e) => e.path.toLowerCase() === historyView!.selectedPath!.toLowerCase())
+        : undefined;
+      if (historyView && restoredEntry) {
+        await get().selectEntry(restoredEntry);
+        const existing = new Set(enriched.map((e) => e.path.toLowerCase()));
+        const paths = historyView.selectedPaths.filter((p) => existing.has(p.toLowerCase()));
+        if (paths.length > 1) set({ selectedPaths: paths });
+      }
+
       const prevSelected = get().selectedPath;
       const stillExists =
+        !!restoredEntry ||
         !pushHistory &&
         prevSelected &&
         enriched.some((e) => e.path.toLowerCase() === prevSelected.toLowerCase());
@@ -758,16 +1303,211 @@ export const useExplorerStore = create<ExplorerState>((set, get) => ({
     }
   },
 
+  initSplitPanels: async () => {
+    const { tabs, activeTabId, currentPath } = get();
+    const tab = tabs.find((t) => t.id === activeTabId);
+    if (!tab) return;
+    let panels = tab.splitPanels;
+    if (!panels) {
+      const start = tab.path || currentPath;
+      panels = [newSplitPanel(start), newSplitPanel(start)];
+      const updatedTabs = tabs.map((t) => (t.id === activeTabId ? { ...t, splitPanels: panels } : t));
+      set({ tabs: updatedTabs });
+      persistSession({ tabs: updatedTabs, activeTabId });
+    }
+    await Promise.all([
+      get().navigateSplitPanel(0, panels[0].path, false),
+      get().navigateSplitPanel(1, panels[1].path, false),
+    ]);
+  },
+
+  navigateSplitPanel: async (index, targetPath, pushHistory = true) => {
+    const tabIdAtStart = get().activeTabId;
+    try {
+      const res = await fsService.listDirectory(targetPath, false);
+      const custom = get().customTags;
+      const enriched = res.items.map((item) => ({ ...item, tags: inferTags(item, custom) }));
+      const { tabs, activeTabId } = get();
+      if (activeTabId !== tabIdAtStart) return; // tab switched while loading
+      const updatedTabs = tabs.map((t) => {
+        if (t.id !== activeTabId) return t;
+        const panels: [SplitPanelState, SplitPanelState] = t.splitPanels
+          ? [t.splitPanels[0], t.splitPanels[1]]
+          : [newSplitPanel(t.path), newSplitPanel(t.path)];
+        const prev = panels[index];
+        const samePath = prev.path.toLowerCase() === res.path.toLowerCase();
+        let next: SplitPanelState = { ...prev, path: res.path };
+        if (pushHistory && !samePath) {
+          const history = prev.history.slice(0, prev.historyIndex + 1);
+          history.push(res.path);
+          next = { ...next, history, historyIndex: history.length - 1 };
+        }
+        // Keep the selection on refresh if the items still exist; clear it on folder change.
+        const existing = new Set(enriched.map((e) => e.path.toLowerCase()));
+        const kept = samePath ? prev.selectedPaths.filter((p) => existing.has(p.toLowerCase())) : [];
+        next.selectedPaths = kept;
+        next.selectedPath =
+          samePath && prev.selectedPath && existing.has(prev.selectedPath.toLowerCase())
+            ? prev.selectedPath
+            : kept[0] ?? null;
+        panels[index] = next;
+        return { ...t, splitPanels: panels };
+      });
+      const items: [FsEntry[], FsEntry[]] = [...get().splitPanelItems];
+      items[index] = enriched;
+      const errors: [string | null, string | null] = [...get().splitPanelErrors];
+      errors[index] = null;
+      set({ tabs: updatedTabs, splitPanelItems: items, splitPanelErrors: errors });
+      persistSession({ tabs: updatedTabs, activeTabId });
+    } catch (err: any) {
+      const errors: [string | null, string | null] = [...get().splitPanelErrors];
+      errors[index] = err.message;
+      set({ splitPanelErrors: errors, statusMessage: `Panel ${index + 1}: ${err.message}` });
+    }
+  },
+
+  splitPanelBack: async (index) => {
+    const { tabs, activeTabId } = get();
+    const panel = tabs.find((t) => t.id === activeTabId)?.splitPanels?.[index];
+    if (!panel || panel.historyIndex <= 0) return;
+    const nextIndex = panel.historyIndex - 1;
+    set({
+      tabs: tabs.map((t) => {
+        if (t.id !== activeTabId || !t.splitPanels) return t;
+        const panels: [SplitPanelState, SplitPanelState] = [t.splitPanels[0], t.splitPanels[1]];
+        panels[index] = { ...panel, historyIndex: nextIndex };
+        return { ...t, splitPanels: panels };
+      }),
+    });
+    await get().navigateSplitPanel(index, panel.history[nextIndex], false);
+  },
+
+  splitPanelForward: async (index) => {
+    const { tabs, activeTabId } = get();
+    const panel = tabs.find((t) => t.id === activeTabId)?.splitPanels?.[index];
+    if (!panel || panel.historyIndex >= panel.history.length - 1) return;
+    const nextIndex = panel.historyIndex + 1;
+    set({
+      tabs: tabs.map((t) => {
+        if (t.id !== activeTabId || !t.splitPanels) return t;
+        const panels: [SplitPanelState, SplitPanelState] = [t.splitPanels[0], t.splitPanels[1]];
+        panels[index] = { ...panel, historyIndex: nextIndex };
+        return { ...t, splitPanels: panels };
+      }),
+    });
+    await get().navigateSplitPanel(index, panel.history[nextIndex], false);
+  },
+
+  splitPanelUp: async (index) => {
+    const { tabs, activeTabId } = get();
+    const panel = tabs.find((t) => t.id === activeTabId)?.splitPanels?.[index];
+    const parent = panel ? parentOf(panel.path) : null;
+    if (parent) await get().navigateSplitPanel(index, parent, true);
+  },
+
+  selectSplitPanelEntry: (index, entry, opts) => {
+    const { tabs, activeTabId } = get();
+    set({
+      tabs: tabs.map((t) => {
+        if (t.id !== activeTabId || !t.splitPanels) return t;
+        const panels: [SplitPanelState, SplitPanelState] = [t.splitPanels[0], t.splitPanels[1]];
+        const prev = panels[index];
+        panels[index] = {
+          ...prev,
+          selectedPath: entry.path,
+          selectedPaths: computeSelection(prev.selectedPath, prev.selectedPaths, entry.path, opts),
+        };
+        return { ...t, splitPanels: panels };
+      }),
+    });
+  },
+
+  setSplitPanelSelection: (index, paths) => {
+    const { tabs, activeTabId } = get();
+    set({
+      tabs: tabs.map((t) => {
+        if (t.id !== activeTabId || !t.splitPanels) return t;
+        const panels: [SplitPanelState, SplitPanelState] = [t.splitPanels[0], t.splitPanels[1]];
+        panels[index] = { ...panels[index], selectedPaths: paths, selectedPath: paths[0] ?? null };
+        return { ...t, splitPanels: panels };
+      }),
+    });
+  },
+
+  setActiveSplitPanel: (index) => {
+    const { tabs, activeTabId } = get();
+    const tab = tabs.find((t) => t.id === activeTabId);
+    if (!tab || (tab.activeSplitPanel ?? 0) === index) return;
+    set({ tabs: tabs.map((t) => (t.id === activeTabId ? { ...t, activeSplitPanel: index } : t)) });
+  },
+
+  splitNavigateHistory: (dir) => {
+    const target = activeSplitTarget(get());
+    if (!target) return false;
+    const s = get();
+    if (dir === 'back') void s.splitPanelBack(target.index);
+    else if (dir === 'forward') void s.splitPanelForward(target.index);
+    else void s.splitPanelUp(target.index);
+    return true;
+  },
+
+  splitMoveSelection: (to, shift) => {
+    const s = get();
+    const target = activeSplitTarget(s);
+    if (!target) return false;
+    const rows = visibleSplitItems(s.splitPanelItems[target.index], s.showHiddenFiles, s.sortBy, s.sortAsc);
+    if (rows.length === 0) return true;
+    const cur = rows.findIndex((r) => r.path === target.panel.selectedPath);
+    let next = 0;
+    if (to === 'next') next = cur < 0 ? 0 : Math.min(rows.length - 1, cur + 1);
+    else if (to === 'prev') next = cur <= 0 ? 0 : cur - 1;
+    else if (to === 'last') next = rows.length - 1;
+    s.selectSplitPanelEntry(target.index, rows[next], { shift, orderedPaths: rows.map((r) => r.path) });
+    return true;
+  },
+
+  splitSelectAll: () => {
+    const s = get();
+    const target = activeSplitTarget(s);
+    if (!target) return false;
+    const rows = visibleSplitItems(s.splitPanelItems[target.index], s.showHiddenFiles, s.sortBy, s.sortAsc);
+    if (rows.length > 0) {
+      s.setSplitPanelSelection(target.index, rows.map((r) => r.path));
+      set({ statusMessage: `Selected ${rows.length} items` });
+    }
+    return true;
+  },
+
+  splitOpenSelected: () => {
+    const s = get();
+    const target = activeSplitTarget(s);
+    if (!target) return false;
+    const entry = s.splitPanelItems[target.index].find((r) => r.path === target.panel.selectedPath);
+    if (entry) {
+      if (entry.isDirectory) void s.navigateSplitPanel(target.index, entry.path, true);
+      else void s.openEntry(entry);
+    }
+    return true;
+  },
+
+  bridgeSplitSelection: () => {
+    const target = activeSplitTarget(get());
+    if (!target) return false;
+    set({ selectedPath: target.panel.selectedPath, selectedPaths: target.panel.selectedPaths });
+    return true;
+  },
+
   goBack: async () => {
     const { tabs, activeTabId } = get();
     const tab = tabs.find((t) => t.id === activeTabId);
     if (!tab || tab.historyIndex <= 0) return;
     const nextIndex = tab.historyIndex - 1;
     const targetPath = tab.history[nextIndex];
+    get().captureHistoryView();
     set({
       tabs: tabs.map((t) => (t.id === activeTabId ? { ...t, historyIndex: nextIndex } : t)),
     });
-    await get().navigateTo(targetPath, false);
+    await get().navigateTo(targetPath, false, true);
   },
 
   goForward: async () => {
@@ -776,16 +1516,17 @@ export const useExplorerStore = create<ExplorerState>((set, get) => ({
     if (!tab || tab.historyIndex >= tab.history.length - 1) return;
     const nextIndex = tab.historyIndex + 1;
     const targetPath = tab.history[nextIndex];
+    get().captureHistoryView();
     set({
       tabs: tabs.map((t) => (t.id === activeTabId ? { ...t, historyIndex: nextIndex } : t)),
     });
-    await get().navigateTo(targetPath, false);
+    await get().navigateTo(targetPath, false, true);
   },
 
   goUp: async () => {
     const { parentPath } = get();
     if (parentPath) {
-      await get().navigateTo(parentPath, true);
+      await get().navigateTo(parentPath, true, true);
     }
   },
 
@@ -793,6 +1534,7 @@ export const useExplorerStore = create<ExplorerState>((set, get) => ({
     const { currentPath, rightPanePath } = get();
     if (currentPath) await get().navigateTo(currentPath, false);
     if (rightPanePath) await get().navigateRightPane(rightPanePath);
+    if (get().layout === 'split') await get().initSplitPanels();
     await get().refreshThumbStats();
   },
 
@@ -860,35 +1602,21 @@ export const useExplorerStore = create<ExplorerState>((set, get) => ({
     });
   },
 
-  pasteClipboard: async (targetDir?: string) => {
-    const { clipboard, currentPath, undoStack } = get();
-    const destDir = targetDir || currentPath;
+  pasteClipboard: async (targetDir?: string, viaRemote = false) => {
+    const { clipboard, currentPath } = get();
+    const destDir = targetDir || activeSplitTarget(get())?.panel.path || currentPath;
     if (!clipboard || clipboard.paths.length === 0 || !destDir) return;
 
+    const count = clipboard.paths.length;
+    const plural = count === 1 ? '' : 's';
     if (clipboard.mode === 'copy') {
-      const createdPaths: string[] = [];
-      for (const src of clipboard.paths) {
-        const res = await fsService.copyItem(src, destDir);
-        if (res.path) createdPaths.push(res.path);
-      }
-      set({
-        undoStack: [...undoStack, { kind: 'copy', createdPaths }],
-        statusMessage: `Pasted ${createdPaths.length} copied item${createdPaths.length === 1 ? '' : 's'}`,
-      });
+      await copyItemsTo(clipboard.paths, destDir, `Pasted ${count} copied item${plural}`, viaRemote);
     } else {
-      const moves: { currentPath: string; originalDir: string }[] = [];
-      for (const src of clipboard.paths) {
-        const originalDir = src.replace(/[\\/][^\\/]+$/, '');
-        const res = await fsService.moveItem(src, destDir);
-        if (res.path) {
-          moves.push({ currentPath: res.path, originalDir });
-        }
+      const unmoved = await moveItemsTo(clipboard.paths, destDir, `Moved ${count} item${plural}`, viaRemote);
+      // Leave the clipboard alone if the user cut or copied something else while this was running.
+      if (get().clipboard === clipboard) {
+        set({ clipboard: unmoved.length > 0 ? { paths: unmoved, mode: 'cut' } : null });
       }
-      set({
-        clipboard: null,
-        undoStack: [...undoStack, { kind: 'move', moves }],
-        statusMessage: `Moved ${moves.length} item${moves.length === 1 ? '' : 's'}`,
-      });
     }
     await get().refresh();
   },
@@ -1043,14 +1771,27 @@ export const useExplorerStore = create<ExplorerState>((set, get) => ({
         : folderViews,
     });
   },
+  setRightSortBy: (field) => {
+    const { rightSortBy, rightSortAsc } = get();
+    set({ rightSortBy: field, rightSortAsc: rightSortBy === field ? !rightSortAsc : true });
+  },
   setSortBy: (sortBy) => {
     const sortAsc = get().sortBy === sortBy ? !get().sortAsc : true;
-    set({ sortBy, sortAsc });
+    const { currentPath, folderViews } = get();
+    set({
+      sortBy,
+      sortAsc,
+      ...(currentPath && { folderViews: persistFolderView(folderViews, currentPath, { sortBy, sortAsc }) }),
+    });
     persistSession({ sortBy, sortAsc });
   },
   toggleSortAsc: () => {
     const sortAsc = !get().sortAsc;
-    set({ sortAsc });
+    const { currentPath, folderViews, sortBy } = get();
+    set({
+      sortAsc,
+      ...(currentPath && { folderViews: persistFolderView(folderViews, currentPath, { sortBy, sortAsc }) }),
+    });
     persistSession({ sortAsc });
   },
   setFilterQuery: (filterQuery) => {
@@ -1099,6 +1840,108 @@ export const useExplorerStore = create<ExplorerState>((set, get) => ({
     } else if (folderSizeStats.pendingScans > 0) {
       await get().refreshFolderSizeStats();
     }
+  },
+  hideDrive: (drive: string) => {
+    const { hiddenDrives } = get();
+    if (hiddenDrives.some((d) => sameDrive(d, drive))) return;
+    const next = [...hiddenDrives, drive];
+    try {
+      localStorage.setItem(HIDDEN_DRIVES_KEY, JSON.stringify(next));
+    } catch {}
+    set({ hiddenDrives: next });
+  },
+  unhideDrive: (drive: string) => {
+    const next = get().hiddenDrives.filter((d) => !sameDrive(d, drive));
+    try {
+      localStorage.setItem(HIDDEN_DRIVES_KEY, JSON.stringify(next));
+    } catch {}
+    set({ hiddenDrives: next });
+  },
+  loadSshConnections: async () => {
+    try {
+      const connections = await fsService.sshList();
+      set({ sshConnections: connections });
+      // Hosts that already have a live session can be refreshed without opening new connections.
+      for (const c of connections) if (c.connected) void get().loadSshDrives(c.id);
+    } catch {
+      // Not available under the Vite dev server or legacy shells.
+      set({ sshConnections: [] });
+    }
+  },
+  addSshConnection: async (req: SshAddRequest) => {
+    const conn = await fsService.sshAdd(req);
+    set({
+      sshConnections: [...get().sshConnections, conn],
+      statusMessage: `Added SSH host ${conn.label || conn.target}`,
+    });
+    return conn;
+  },
+  removeSshConnection: async (id: string) => {
+    const conn = get().sshConnections.find((c) => c.id === id);
+    await fsService.sshRemove(id);
+    const { [id]: _dropped, ...remainingDrives } = get().sshDrives;
+    persistSshDrives(remainingDrives);
+    set({
+      sshDrives: remainingDrives,
+      sshConnections: get().sshConnections.filter((c) => c.id !== id),
+      statusMessage: conn ? `Removed SSH host ${conn.label || conn.target}` : 'Removed SSH host',
+    });
+  },
+  testSshConnection: async (id: string) => {
+    const res = await fsService.sshConnect(id);
+    set({
+      sshConnections: get().sshConnections.map((c) => (c.id === id ? res.connection : c)),
+      statusMessage: `Connected to ${res.connection.label || res.connection.target}`,
+    });
+    void get().loadSshDrives(id);
+    return res;
+  },
+  loadSshDrives: async (id: string) => {
+    try {
+      const drives = await fsService.sshDrives(id);
+      // The host may have been removed while the request was in flight.
+      if (!get().sshConnections.some((c) => c.id === id)) return;
+      const next = { ...get().sshDrives, [id]: drives };
+      persistSshDrives(next);
+      set({
+        sshDrives: next,
+        sshConnections: get().sshConnections.map((c) => (c.id === id ? { ...c, connected: true } : c)),
+      });
+    } catch {
+      // Unreachable host or no mount table: keep whatever was listed before.
+    }
+  },
+  openSshHost: async (id: string, at: 'home' | 'root' | { path: string } = 'home') => {
+    const conn = get().sshConnections.find((c) => c.id === id);
+    const name = conn ? conn.label || conn.target : 'SSH host';
+    set({ statusMessage: `Connecting to ${name}...` });
+    try {
+      const res = await fsService.sshConnect(id);
+      set({ sshConnections: get().sshConnections.map((c) => (c.id === id ? res.connection : c)) });
+      // Not awaited: a slow or stale mount on the remote must not hold up navigation.
+      void get().loadSshDrives(id);
+      await get().navigateSidebar(
+        at === 'root' ? res.connection.rootPath : at === 'home' ? res.homePath : at.path
+      );
+      set({ statusMessage: `Connected to ${name}` });
+    } catch (err: any) {
+      set({ statusMessage: `Could not connect to ${name}: ${err?.message || err}` });
+    }
+  },
+  disconnectSsh: async (id: string) => {
+    try {
+      await fsService.sshDisconnect(id);
+    } catch {}
+    set({ sshConnections: get().sshConnections.map((c) => (c.id === id ? { ...c, connected: false } : c)) });
+  },
+  resetSshHostKey: async (id: string) => {
+    await fsService.sshResetHostKey(id);
+    set({
+      sshConnections: get().sshConnections.map((c) =>
+        c.id === id ? { ...c, hostKeyFingerprint: null, connected: false } : c
+      ),
+      statusMessage: 'Host key cleared; it will be trusted again on the next connect',
+    });
   },
   reorderSidebarSections: (order: SidebarSectionId[]) => {
     localStorage.setItem('rook_sidebar_section_order_v1', JSON.stringify(order));
@@ -1252,6 +2095,7 @@ export const useExplorerStore = create<ExplorerState>((set, get) => ({
       workspace: { icon: 'crown', color: '#38bdf8' },
       miller: { icon: 'barsVertical', color: '#34d399' },
       dualpane: { icon: 'scrollHorizontal', color: '#a855f7' },
+      split: { icon: 'columns', color: '#14b8a6' },
       faceted: { icon: 'menuGrid', color: '#f59e0b' },
       command: { icon: 'zoom', color: '#f43f5e' },
       thumbnails: { icon: 'file_image', color: '#ec4899' },
@@ -1347,8 +2191,10 @@ export const useExplorerStore = create<ExplorerState>((set, get) => ({
     const savedView = get().folderViews[folderViewKey(activeTab.path)];
     const nextLayout = savedView?.layout || wf.layout || get().layout;
     const nextThumbGridSize = savedView?.thumbSize ?? savedThumbGridSize();
-    const nextSortBy = wf.sortBy ?? get().sortBy;
-    const nextSortAsc = wf.sortAsc ?? get().sortAsc;
+    const nextSortBy = savedView?.sortBy ?? wf.sortBy ?? get().sortBy;
+    const nextSortAsc = savedView?.sortBy
+      ? savedView.sortAsc ?? true
+      : wf.sortAsc ?? get().sortAsc;
     const nextShowInspector = wf.showInspector ?? get().showInspector;
     const nextShowHidden = wf.showHiddenFiles ?? get().showHiddenFiles;
 
@@ -1392,6 +2238,11 @@ export const useExplorerStore = create<ExplorerState>((set, get) => ({
     });
 
     await get().navigateTo(activeTab.path, false);
+    // In split view the panels are what's on screen. Tabs saved with panels get them back; a
+    // tab without any starts both panels at the workflow's path (activeTab.path).
+    if (nextLayout === 'split') {
+      await get().initSplitPanels();
+    }
     // Not tied to nextLayout: a saved folder style may have replaced the workflow's dual-pane
     // layout, and the right pane should still match the session saved above.
     if (wf.rightPanePath) {
@@ -1436,6 +2287,8 @@ export const useExplorerStore = create<ExplorerState>((set, get) => ({
   toggleTerminal: () => set((s) => ({ showTerminal: !s.showTerminal })),
   toggleQuickLookModal: () => set((s) => ({ showQuickLookModal: !s.showQuickLookModal })),
   toggleOptionsModal: () => set((s) => ({ showOptionsModal: !s.showOptionsModal })),
+  openOptionsTo: (category: OptionsCategory) => set({ showOptionsModal: true, optionsInitialCategory: category }),
+  clearOptionsInitialCategory: () => set({ optionsInitialCategory: null }),
   toggleHiddenFiles: () => {
     const next = !get().showHiddenFiles;
     set({ showHiddenFiles: next });
@@ -1461,7 +2314,7 @@ export const useExplorerStore = create<ExplorerState>((set, get) => ({
 
   createNewFolder: async (name: string) => {
     const { currentPath, undoStack } = get();
-    const res = await fsService.createDirectory(currentPath, name);
+    const res = await fsService.createDirectory(activeSplitTarget(get())?.panel.path || currentPath, name);
     set({
       undoStack: res.path ? [...undoStack, { kind: 'create', createdPath: res.path }] : undoStack,
       statusMessage: `Created folder "${name}"`,
@@ -1474,7 +2327,7 @@ export const useExplorerStore = create<ExplorerState>((set, get) => ({
 
   createNewFile: async (name: string) => {
     const { currentPath, undoStack } = get();
-    const res = await fsService.createFile(currentPath, name, '');
+    const res = await fsService.createFile(activeSplitTarget(get())?.panel.path || currentPath, name, '');
     set({
       undoStack: res.path ? [...undoStack, { kind: 'create', createdPath: res.path }] : undoStack,
       statusMessage: `Created file "${name}"`,
@@ -1587,35 +2440,18 @@ export const useExplorerStore = create<ExplorerState>((set, get) => ({
   },
 
   copySelectedToOtherPane: async () => {
-    const { selectedPaths, selectedPath, rightPanePath, undoStack } = get();
+    const { selectedPaths, selectedPath, rightPanePath } = get();
     const targets = selectedPaths.length > 0 ? selectedPaths : selectedPath ? [selectedPath] : [];
     if (targets.length === 0 || !rightPanePath) return;
-    const createdPaths: string[] = [];
-    for (const src of targets) {
-      const res = await fsService.copyItem(src, rightPanePath);
-      if (res.path) createdPaths.push(res.path);
-    }
-    set({
-      undoStack: [...undoStack, { kind: 'copy', createdPaths }],
-      statusMessage: `Copied ${targets.length} item(s) to ${rightPanePath}`,
-    });
+    await copyItemsTo(targets, rightPanePath, `Copied ${targets.length} item(s) to ${rightPanePath}`);
     await get().refresh();
   },
 
   moveSelectedToOtherPane: async () => {
-    const { selectedPaths, selectedPath, rightPanePath, undoStack } = get();
+    const { selectedPaths, selectedPath, rightPanePath } = get();
     const targets = selectedPaths.length > 0 ? selectedPaths : selectedPath ? [selectedPath] : [];
     if (targets.length === 0 || !rightPanePath) return;
-    const moves: { currentPath: string; originalDir: string }[] = [];
-    for (const src of targets) {
-      const originalDir = src.replace(/[\\/][^\\/]+$/, '');
-      const res = await fsService.moveItem(src, rightPanePath);
-      if (res.path) moves.push({ currentPath: res.path, originalDir });
-    }
-    set({
-      undoStack: [...undoStack, { kind: 'move', moves }],
-      statusMessage: `Moved ${targets.length} item(s) to ${rightPanePath}`,
-    });
+    await moveItemsTo(targets, rightPanePath, `Moved ${targets.length} item(s) to ${rightPanePath}`);
     await get().refresh();
   },
 
@@ -1635,29 +2471,10 @@ export const useExplorerStore = create<ExplorerState>((set, get) => ({
     });
 
     if (validSources.length === 0) return;
-    const { undoStack } = get();
-
     if (copy) {
-      const createdPaths: string[] = [];
-      for (const src of validSources) {
-        const res = await fsService.copyItem(src, targetDir);
-        if (res.path) createdPaths.push(res.path);
-      }
-      set({
-        undoStack: [...undoStack, { kind: 'copy', createdPaths }],
-        statusMessage: `Copied ${validSources.length} item(s) to ${targetDir}`,
-      });
+      await copyItemsTo(validSources, targetDir, `Copied ${validSources.length} item(s) to ${targetDir}`);
     } else {
-      const moves: { currentPath: string; originalDir: string }[] = [];
-      for (const src of validSources) {
-        const originalDir = src.replace(/[\\/][^\\/]+$/, '');
-        const res = await fsService.moveItem(src, targetDir);
-        if (res.path) moves.push({ currentPath: res.path, originalDir });
-      }
-      set({
-        undoStack: [...undoStack, { kind: 'move', moves }],
-        statusMessage: `Moved ${validSources.length} item(s) to ${targetDir}`,
-      });
+      await moveItemsTo(validSources, targetDir, `Moved ${validSources.length} item(s) to ${targetDir}`);
     }
     await get().refresh();
   },
@@ -1745,10 +2562,10 @@ export const useExplorerStore = create<ExplorerState>((set, get) => ({
   },
 
   openPowershellCurrent: async () => {
-    const { currentPath } = get();
-    if (!currentPath) return;
-    await fsService.openPowershell(currentPath);
-    set({ statusMessage: `Launched PowerShell in ${currentPath}` });
+    const dir = activeSplitTarget(get())?.panel.path || get().currentPath;
+    if (!dir) return;
+    await fsService.openPowershell(dir);
+    set({ statusMessage: `Launched PowerShell in ${dir}` });
   },
 
   compressSelectedToZip: async () => {

@@ -4,6 +4,7 @@ import { LayoutMode } from '../types/fs';
 import { fsService } from '../services/fsService';
 import { KenneyIcon } from './KenneyIcon';
 import { handleFileDropToDir, hasFileDragData, setAppropriateDropEffect } from '../utils/dragDrop';
+import { buildSshPath, parseSshPath } from '../utils/sshPath';
 
 export const RibbonHeader: React.FC = () => {
   const {
@@ -38,6 +39,7 @@ export const RibbonHeader: React.FC = () => {
     dropEntriesToDir,
     dropUrlToDir,
     openPowershellCurrent,
+    sshConnections,
   } = useExplorerStore();
 
   const [editingPath, setEditingPath] = useState(false);
@@ -57,8 +59,15 @@ export const RibbonHeader: React.FC = () => {
     return () => window.removeEventListener('rook-window-state', onWinState);
   }, []);
 
-  const pathSegments = currentPath.split(/[\\/]/).filter(Boolean);
+  // SSH paths (ssh://{id}/remote/path) show the host as the first crumb, then the remote folders.
+  const sshLoc = parseSshPath(currentPath);
+  const sshConn = sshLoc ? sshConnections.find((c) => c.id === sshLoc.id) : undefined;
+  const pathSegments = sshLoc
+    ? [sshConn?.label || sshConn?.target || 'SSH', ...sshLoc.remotePath.split('/').filter(Boolean)]
+    : currentPath.split(/[\\/]/).filter(Boolean);
+  const crumbSeparator = sshLoc ? '/' : '\\';
   const getCrumbPath = (idx: number) => {
+    if (sshLoc) return buildSshPath(sshLoc.id, '/' + pathSegments.slice(1, idx + 1).join('/'));
     const isWindowsDrive = /^[a-zA-Z]:[\\/]/.test(currentPath) || currentPath.includes('\\');
     const prefix = isWindowsDrive ? '' : '\\';
     const sep = '\\';
@@ -147,12 +156,13 @@ export const RibbonHeader: React.FC = () => {
   };
 
   const layouts: { id: LayoutMode; icon: string; tooltip: string }[] = [
-    { id: 'workspace', icon: 'menuList', tooltip: '1. Modern Workspace Layout (Alt+1)' },
-    { id: 'thumbnails', icon: 'menuGrid', tooltip: '2. Large Thumbnail Icons Layout (Alt+2)' },
-    { id: 'miller', icon: 'barsVertical', tooltip: '3. Miller Columns Layout (Alt+3)' },
-    { id: 'dualpane', icon: 'scrollHorizontal', tooltip: '4. Dual-Pane Commander Layout (Alt+4)' },
-    { id: 'faceted', icon: 'tag', tooltip: '5. Tag & Faceted Canvas Layout (Alt+5)' },
-    { id: 'command', icon: 'zoom', tooltip: '6. Fuzzy Navigator Layout (Alt+6)' },
+    { id: 'workspace', icon: 'menuList', tooltip: 'Details' },
+    { id: 'thumbnails', icon: 'menuGrid', tooltip: 'Thumbnails' },
+    { id: 'miller', icon: 'barsVertical', tooltip: 'Miller Columns' },
+    { id: 'dualpane', icon: 'scrollHorizontal', tooltip: 'Dual-Pane' },
+    { id: 'split', icon: 'columns', tooltip: 'Split Panels (two independent folders)' },
+    { id: 'faceted', icon: 'tag', tooltip: 'Faceted' },
+    { id: 'command', icon: 'zoom', tooltip: 'Fuzzy' },
   ];
 
   return (
@@ -196,7 +206,7 @@ export const RibbonHeader: React.FC = () => {
           <button
             onClick={copySelectedToOtherPane}
             disabled={!selectedPath}
-            title="Copy Selected to Target Pane (F5)"
+            title="Copy"
             className="w-8 h-8 rounded-md bg-[var(--card)] border border-[var(--border)] hover:border-[var(--primary)] disabled:opacity-40 cursor-pointer flex items-center justify-center shrink-0 transition-colors"
           >
             <KenneyIcon name="export" size={16} />
@@ -205,7 +215,7 @@ export const RibbonHeader: React.FC = () => {
           <button
             onClick={moveSelectedToOtherPane}
             disabled={!selectedPath}
-            title="Move Selected to Target Pane (F6)"
+            title="Move"
             className="w-8 h-8 rounded-md bg-[var(--card)] border border-[var(--border)] hover:border-[var(--primary)] disabled:opacity-40 cursor-pointer flex items-center justify-center shrink-0 transition-colors"
           >
             <KenneyIcon name="import" size={16} />
@@ -214,7 +224,7 @@ export const RibbonHeader: React.FC = () => {
           <button
             onClick={handleRename}
             disabled={!selectedPath}
-            title="Rename Selected Item (F2)"
+            title="Rename"
             className="w-8 h-8 rounded-md bg-[var(--card)] border border-[var(--border)] hover:border-[var(--primary)] disabled:opacity-40 cursor-pointer flex items-center justify-center shrink-0 transition-colors"
           >
             <KenneyIcon name="toolPencil" size={16} />
@@ -224,7 +234,7 @@ export const RibbonHeader: React.FC = () => {
           <button
             onClick={(e) => requestDeleteSelected(e.shiftKey)}
             disabled={!selectedPath}
-            title="Delete Selected Item (Del = Recycle Bin, Shift+Del = Permanent)"
+            title="Delete"
             className="w-8 h-8 rounded-md bg-red-950/35 hover:bg-red-900/50 border border-red-500/25 text-white disabled:opacity-40 cursor-pointer flex items-center justify-center shrink-0 transition-colors"
           >
             <KenneyIcon name="trashcan" size={16} />
@@ -234,7 +244,7 @@ export const RibbonHeader: React.FC = () => {
 
           <button
             onClick={openPowershellCurrent}
-            title="Launch PowerShell in Current Directory (Ctrl+T)"
+            title="PowerShell"
             className="w-8 h-8 rounded-md bg-[var(--card)] border border-[var(--border)] hover:border-[var(--primary)] cursor-pointer flex items-center justify-center shrink-0 transition-colors"
           >
             <KenneyIcon name="campfire" size={16} />
@@ -268,7 +278,7 @@ export const RibbonHeader: React.FC = () => {
           <div className="flex items-center gap-1 shrink-0">
             <button
               onClick={toggleSidebar}
-              title="Toggle Left Sidebar (Ctrl+B)"
+              title="Sidebar"
               className={`w-8 h-8 rounded-md border cursor-pointer flex items-center justify-center shrink-0 transition-colors ${
                 showSidebar
                   ? 'bg-[var(--primary)]/25 border-[var(--primary)] text-[var(--primary)]'
@@ -279,7 +289,7 @@ export const RibbonHeader: React.FC = () => {
             </button>
             <button
               onClick={toggleInspector}
-              title="Toggle Inspector Pane (Ctrl+I)"
+              title="Inspector"
               className={`w-8 h-8 rounded-md border cursor-pointer flex items-center justify-center shrink-0 transition-colors ${
                 showInspector
                   ? 'bg-[var(--primary)]/25 border-[var(--primary)] text-[var(--primary)]'
@@ -290,7 +300,7 @@ export const RibbonHeader: React.FC = () => {
             </button>
             <button
               onClick={toggleTerminal}
-              title="Toggle Integrated Terminal Drawer (Ctrl+`)"
+              title="Terminal"
               className={`w-8 h-8 rounded-md border cursor-pointer flex items-center justify-center shrink-0 transition-colors ${
                 showTerminal
                   ? 'bg-[var(--primary)]/25 border-[var(--primary)] text-[var(--primary)]'
@@ -302,7 +312,7 @@ export const RibbonHeader: React.FC = () => {
 
             <button
               onClick={toggleOptionsModal}
-              title="Options & Preferences"
+              title="Options"
               className={`w-8 h-8 rounded-md border cursor-pointer flex items-center justify-center shrink-0 transition-colors ${
                 showOptionsModal
                   ? 'bg-[var(--primary)]/25 border-[var(--primary)] text-[var(--primary)]'
@@ -319,21 +329,21 @@ export const RibbonHeader: React.FC = () => {
           <div className="flex items-center gap-1 shrink-0">
             <button
               onClick={() => fsService.winMinimize()}
-              title="Minimize Window"
+              title="Minimize"
               className="w-8 h-8 rounded-md hover:bg-[var(--card)] border border-transparent hover:border-[var(--border)] cursor-pointer flex items-center justify-center opacity-80 hover:opacity-100 shrink-0 transition-colors"
             >
               <KenneyIcon name="minus" size={14} />
             </button>
             <button
               onClick={handleToggleMaximize}
-              title={isMaximized ? 'Restore Window' : 'Maximize Window'}
+              title={isMaximized ? 'Restore' : 'Maximize'}
               className="w-8 h-8 rounded-md hover:bg-[var(--card)] border border-transparent hover:border-[var(--border)] cursor-pointer flex items-center justify-center opacity-80 hover:opacity-100 shrink-0 transition-colors"
             >
               <KenneyIcon name={isMaximized ? 'smaller' : 'larger'} size={14} />
             </button>
             <button
               onClick={() => fsService.winClose()}
-              title="Exit Rook"
+              title="Exit"
               className="w-8 h-8 rounded-md hover:bg-red-600 border border-transparent hover:border-red-500 cursor-pointer flex items-center justify-center opacity-85 hover:opacity-100 hover:text-white shrink-0 transition-colors"
             >
               <KenneyIcon name="cross" size={14} />
@@ -348,28 +358,28 @@ export const RibbonHeader: React.FC = () => {
           <button
             onClick={goBack}
             className="w-8 h-8 rounded-md bg-[var(--card)] hover:border-[var(--primary)] border border-[var(--border)] cursor-pointer flex items-center justify-center shrink-0 transition-colors"
-            title="Back (Alt+Left or Mouse Back Button)"
+            title="Back"
           >
             <KenneyIcon name="caretLeft" size={16} />
           </button>
           <button
             onClick={goForward}
             className="w-8 h-8 rounded-md bg-[var(--card)] hover:border-[var(--primary)] border border-[var(--border)] cursor-pointer flex items-center justify-center shrink-0 transition-colors"
-            title="Forward (Alt+Right or Mouse Forward Button)"
+            title="Forward"
           >
             <KenneyIcon name="caretRight" size={16} />
           </button>
           <button
             onClick={goUp}
             className="w-8 h-8 rounded-md bg-[var(--card)] hover:border-[var(--primary)] border border-[var(--border)] cursor-pointer flex items-center justify-center shrink-0 transition-colors"
-            title="Parent Directory (Alt+Up)"
+            title="Up"
           >
             <KenneyIcon name="caretUp" size={16} />
           </button>
           <button
             onClick={refresh}
             className="w-8 h-8 rounded-md bg-[var(--card)] hover:border-[var(--primary)] border border-[var(--border)] cursor-pointer flex items-center justify-center shrink-0 transition-colors"
-            title="Refresh (F5)"
+            title="Refresh"
           >
             <KenneyIcon name="arrowsClockwise" size={16} />
           </button>
@@ -419,7 +429,7 @@ export const RibbonHeader: React.FC = () => {
                   const isDropOver = dragTarget === `crumb:${crumbPath}`;
                   return (
                     <React.Fragment key={idx}>
-                      {idx > 0 && <span className="text-[var(--muted-foreground)] opacity-40 select-none">\</span>}
+                      {idx > 0 && <span className="text-[var(--muted-foreground)] opacity-40 select-none">{crumbSeparator}</span>}
                       <span
                         onClick={(e) => {
                           e.stopPropagation();
@@ -454,11 +464,11 @@ export const RibbonHeader: React.FC = () => {
             type="button"
             onClick={(e) => {
               e.stopPropagation();
-              navigator.clipboard.writeText(currentPath.replace(/\//g, '\\')).catch(() => {});
+              navigator.clipboard.writeText(sshLoc ? currentPath : currentPath.replace(/\//g, '\\')).catch(() => {});
               setCopiedPath(true);
               setTimeout(() => setCopiedPath(false), 1500);
             }}
-            title="Copy Current Directory Path"
+            title="Copy Path"
             className="w-6.5 h-6.5 rounded hover:bg-[var(--card)] text-[var(--muted-foreground)] hover:text-[var(--foreground)] cursor-pointer flex items-center justify-center shrink-0 transition-colors"
           >
             <KenneyIcon
@@ -493,7 +503,7 @@ export const RibbonHeader: React.FC = () => {
             <button
               type="button"
               onClick={toggleDeepSearch}
-              title={deepSearch ? 'Recursive Subfolder Search: ON' : 'Toggle Recursive Subfolder Search'}
+              title={deepSearch ? 'Recursive Search: On' : 'Recursive Search: Off'}
               className={`h-6 px-2 rounded text-[10px] font-medium border cursor-pointer transition-colors flex items-center justify-center shrink-0 ${
                 deepSearch
                   ? 'bg-sky-500/25 border-sky-400/70 text-sky-300'

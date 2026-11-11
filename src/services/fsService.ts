@@ -4,9 +4,20 @@ import {
   FolderSizeStats,
   LogEntry,
   LogSettings,
+  MediaInfo,
+  SshAddRequest,
+  SshConnectResult,
+  SshConnection,
+  SshDrive,
   SystemInfo,
   ThumbCacheStats,
+  TransferItemOptions,
+  TransferItemResult,
+  RemoteCopyCheck,
+  TransferPlan,
+  TransferProgress,
 } from '../types/fs';
+import { isSshPath } from '../utils/sshPath';
 
 const isTauri = () => typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 
@@ -151,7 +162,7 @@ export const fsService = {
   },
 
   async listDirectory(path?: string, watch = true): Promise<DirListResponse> {
-    if (isTauri() && path) {
+    if (isTauri() && path && !isSshPath(path)) {
       const { invoke } = await import('@tauri-apps/api/core');
       return invoke<DirListResponse>('list_directory', { path });
     }
@@ -171,11 +182,16 @@ export const fsService = {
   },
 
   async readPreview(path: string): Promise<FilePreview> {
-    if (isTauri()) {
+    if (isTauri() && !isSshPath(path)) {
       const { invoke } = await import('@tauri-apps/api/core');
       return invoke<FilePreview>('read_file_preview', { path });
     }
     return postApi<FilePreview>('preview', { path });
+  },
+
+  /** Media details (resolution, duration, bitrate, times) for an image or video. Not mirrored in the Vite dev plugin. */
+  async getMediaInfo(path: string): Promise<MediaInfo> {
+    return postApi<MediaInfo>('mediaInfo', { path });
   },
 
   async getGitStatus(path: string): Promise<{ branch: string | null; statuses: Record<string, string> }> {
@@ -198,16 +214,55 @@ export const fsService = {
     return postApi('rename', { oldPath, newName });
   },
 
-  async deleteItem(path: string, permanent = false): Promise<{ ok: boolean }> {
+  /** SSH paths have no Recycle Bin: the host always deletes them permanently and returns `permanent: true`. */
+  async deleteItem(path: string, permanent = false): Promise<{ ok: boolean; permanent?: boolean }> {
     return postApi('delete', { path, permanent });
   },
 
-  async copyItem(sourcePath: string, destDir: string): Promise<{ ok: boolean; path: string }> {
-    return postApi('copy', { sourcePath, destDir });
+  /** Copies into `destDir`, merging into a folder of the same name. Identical files are skipped. */
+  async copyItem(sourcePath: string, destDir: string, options: TransferItemOptions = {}): Promise<TransferItemResult> {
+    return postApi('copy', { sourcePath, destDir, ...options });
   },
 
-  async moveItem(sourcePath: string, destDir: string): Promise<{ ok: boolean; path: string }> {
-    return postApi('move', { sourcePath, destDir });
+  /** Like `copyItem`, but each file leaves the source once it is safely at the destination. */
+  async moveItem(sourcePath: string, destDir: string, options: TransferItemOptions = {}): Promise<TransferItemResult> {
+    return postApi('move', { sourcePath, destDir, ...options });
+  },
+
+  /** Checks the destination for files a copy/move batch would collide with (metadata only). */
+  async transferPlan(kind: 'copy' | 'move', paths: string[], destDir: string): Promise<TransferPlan> {
+    return postApi('transferPlan', { kind, paths, destDir });
+  },
+
+  /** Whether the SSH host behind `destDir` can copy `paths` itself, straight from the network share. */
+  async remoteCopyCheck(paths: string[], destDir: string): Promise<RemoteCopyCheck> {
+    return postApi('remoteCopyCheck', { paths, destDir });
+  },
+
+  /** Opens a progress job for a copy/move batch; the host sizes up `paths` in the background. */
+  async transferStart(id: string, kind: 'copy' | 'move', paths: string[], destDir: string): Promise<void> {
+    await postApi('transferStart', { id, kind, paths, destDir });
+  },
+
+  /** Polled several times a second, so it bypasses postApi to keep it out of the API timing log. */
+  async transferProgress(id: string): Promise<TransferProgress> {
+    const res = await fetch('/api/fs/transferProgress', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'FS request failed: transferProgress');
+    return data as TransferProgress;
+  },
+
+  /** Stops the file being copied; the pending copy/move request then fails with "Cancelled". */
+  async transferCancel(id: string): Promise<void> {
+    await postApi('transferCancel', { id });
+  },
+
+  async transferEnd(id: string): Promise<void> {
+    await postApi('transferEnd', { id });
   },
 
   async compressToZip(paths: string[]): Promise<{ ok: boolean; path: string }> {
@@ -240,7 +295,8 @@ export const fsService = {
     return postApi('cancelCommand');
   },
 
-  async openFile(path: string): Promise<{ ok: boolean }> {
+  /** For SSH paths the host downloads a temporary local copy and opens that; edits aren't synced back. */
+  async openFile(path: string): Promise<{ ok: boolean; tempCopy?: string }> {
     return postApi('openFile', { path });
   },
 
@@ -251,5 +307,43 @@ export const fsService = {
 
   async revealInExplorer(path: string): Promise<{ ok: boolean }> {
     return postApi('revealInExplorer', { path });
+  },
+
+  // ---- SSH hosts (desktop host only; not mirrored in the Vite dev plugin) ----
+  // Folders on a saved host are addressed as `ssh://{connectionId}/remote/path` and work with
+  // listDirectory, readPreview, copy/move/rename/delete etc. like local paths.
+
+  async sshList(): Promise<SshConnection[]> {
+    const res = await postApi<{ connections: SshConnection[] }>('sshList');
+    return res.connections ?? [];
+  },
+
+  async sshAdd(req: SshAddRequest): Promise<SshConnection> {
+    const res = await postApi<{ connection: SshConnection }>('sshAdd', { ...req });
+    return res.connection;
+  },
+
+  async sshRemove(id: string): Promise<{ ok: boolean }> {
+    return postApi('sshRemove', { id });
+  },
+
+  /** Opens (or reuses) the SFTP session; use it to test a host before browsing it. */
+  async sshConnect(id: string): Promise<SshConnectResult> {
+    return postApi<SshConnectResult>('sshConnect', { id });
+  },
+
+  /** Disks mounted on the host (connects if needed). Empty for hosts without a Linux-style mount table. */
+  async sshDrives(id: string): Promise<SshDrive[]> {
+    const res = await postApi<{ drives: SshDrive[] }>('sshDrives', { id });
+    return res.drives ?? [];
+  },
+
+  async sshDisconnect(id: string): Promise<{ ok: boolean }> {
+    return postApi('sshDisconnect', { id });
+  },
+
+  /** Forgets the pinned host key, e.g. after the remote machine was reinstalled. */
+  async sshResetHostKey(id: string): Promise<{ ok: boolean }> {
+    return postApi('sshResetHostKey', { id });
   },
 };

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useExplorerStore } from '../store/useExplorerStore';
 import { FsEntry, SortField } from '../types/fs';
 import {
@@ -10,8 +10,71 @@ import {
 } from '../utils/format';
 import { KenneyIcon } from './KenneyIcon';
 import { FileThumbnail } from './FileThumbnail';
+import { SplitPanelsView } from './SplitPanelsView';
 import { handleFileDropToDir, hasFileDragData, setAppropriateDropEffect } from '../utils/dragDrop';
 import { naturalCompare } from '../utils/naturalSort';
+
+const PANE_COL = { type: 'w-16', size: 'w-20', modified: 'w-32' } as const;
+
+/** Column header bar (Name / Type / Size / Modified) used by each dual-pane side. */
+const PaneColumnHeader: React.FC<{
+  sortBy: SortField;
+  sortAsc: boolean;
+  onSort: (field: SortField) => void;
+}> = ({ sortBy, sortAsc, onSort }) => {
+  const cell = (label: string, field: SortField, cls: string, align = 'text-left') => (
+    <button
+      type="button"
+      onClick={() => onSort(field)}
+      className={`${cls} shrink-0 px-2 flex items-center gap-1 ${align} hover:text-[var(--foreground)] cursor-pointer truncate`}
+    >
+      <span className="truncate">{label}</span>
+      {sortBy === field && (
+        <KenneyIcon
+          name={sortAsc ? 'caretUp' : 'caretDown'}
+          size={12}
+          className="text-[var(--foreground)]"
+        />
+      )}
+    </button>
+  );
+  return (
+    <div className="flex items-center px-3 py-1 border-b border-[var(--border)] text-[11px] font-semibold text-[var(--foreground)]/80 select-none bg-[var(--sidebar)]">
+      <button
+        type="button"
+        onClick={() => onSort('name')}
+        className="flex-1 min-w-0 flex items-center gap-1 text-left hover:text-[var(--foreground)] cursor-pointer truncate"
+      >
+        <span>Name</span>
+        {sortBy === 'name' && (
+          <KenneyIcon
+            name={sortAsc ? 'caretUp' : 'caretDown'}
+            size={12}
+            className="text-[var(--foreground)]"
+          />
+        )}
+      </button>
+      {cell('Type', 'extension', PANE_COL.type)}
+      {cell('Size', 'size', PANE_COL.size, 'justify-end text-right')}
+      {cell('Modified', 'modified', PANE_COL.modified)}
+    </div>
+  );
+};
+
+/** Type / Size / Modified cells matching PaneColumnHeader. */
+const PaneRowCells: React.FC<{ entry: FsEntry }> = ({ entry }) => (
+  <>
+    <span className={`${PANE_COL.type} shrink-0 px-2 truncate text-[var(--muted-foreground)]`}>
+      {entry.isDirectory ? '' : entry.extension ? `.${entry.extension}` : 'File'}
+    </span>
+    <span className={`${PANE_COL.size} shrink-0 px-2 text-right font-mono text-[var(--muted-foreground)]`}>
+      {formatBytes(entry.sizeBytes, entry.isDirectory)}
+    </span>
+    <span className={`${PANE_COL.modified} shrink-0 px-2 truncate font-mono text-[11px] text-[var(--muted-foreground)]`}>
+      {formatTimestamp(entry.modifiedMs)}
+    </span>
+  </>
+);
 
 export const LayoutsView: React.FC = () => {
   const {
@@ -22,6 +85,11 @@ export const LayoutsView: React.FC = () => {
     currentPath,
     rightPanePath,
     rightPaneItems,
+    rightSortBy,
+    rightSortAsc,
+    setRightSortBy,
+    activePane,
+    setActivePane,
     selectedPath,
     selectedPaths,
     clipboard,
@@ -48,6 +116,36 @@ export const LayoutsView: React.FC = () => {
     dropEntriesToDir,
     dropUrlToDir,
   } = useExplorerStore();
+
+  // Track the main list's scroll offset (workspace/thumbnails layouts) and save it to the
+  // session-only store map when leaving a folder. Tracked in a ref so the value isn't
+  // affected by the DOM clamping scrollTop once the next folder's items render.
+  const setFolderScrollPosition = useExplorerStore((s) => s.setFolderScrollPosition);
+  const lastScrollRef = useRef<{ path: string; top: number }>({ path: currentPath, top: 0 });
+  const handleMainScroll = (e: React.UIEvent<HTMLElement>) => {
+    if (e.target !== e.currentTarget) return; // ignore bubbled scrolls from nested lists
+    lastScrollRef.current = { path: currentPath, top: e.currentTarget.scrollTop };
+  };
+  // Layout effect so the cleanup (save for the old folder) runs before the restore for the new
+  // one in the same commit, and the restored offset is applied before paint (no visible jump).
+  // `items` and `currentPath` are set together by the store, so the new folder's rows are
+  // already in the DOM here and scrollTop is not clamped.
+  const mainScrollRef = useRef<HTMLElement | null>(null);
+  useLayoutEffect(() => {
+    if (lastScrollRef.current.path !== currentPath) {
+      lastScrollRef.current = { path: currentPath, top: 0 };
+    }
+    const saved = useExplorerStore.getState().folderScrollPositions[currentPath] ?? 0;
+    const el = mainScrollRef.current;
+    if (el) {
+      el.scrollTop = saved;
+      lastScrollRef.current = { path: currentPath, top: el.scrollTop };
+    }
+    return () => {
+      const last = lastScrollRef.current;
+      if (last.path === currentPath) setFolderScrollPosition(currentPath, last.top);
+    };
+  }, [currentPath, setFolderScrollPosition]);
 
   const [dragTargetDir, setDragTargetDir] = useState<string | null>(null);
   const [colMenuPos, setColMenuPos] = useState<{ x: number; y: number } | null>(null);
@@ -229,6 +327,44 @@ export const LayoutsView: React.FC = () => {
     return list;
   }, [items, deepSearch, deepSearchResults, showHiddenFiles, filterQuery, layout, activeTagFilter, sortBy, sortAsc]);
 
+  // Dual-pane partition bar: drag to resize the left pane (percent of container width).
+  const [leftPanePct, setLeftPanePct] = useState(50);
+  const dualPaneRef = useRef<HTMLDivElement | null>(null);
+  const [draggingDivider, setDraggingDivider] = useState(false);
+  const startDividerDrag = (e: React.MouseEvent) => {
+    e.preventDefault();
+    const box = dualPaneRef.current?.getBoundingClientRect();
+    if (!box) return;
+    setDraggingDivider(true);
+    const onMove = (ev: MouseEvent) => {
+      const pct = ((ev.clientX - box.left) / box.width) * 100;
+      setLeftPanePct(Math.min(80, Math.max(20, pct)));
+    };
+    const onUp = () => {
+      setDraggingDivider(false);
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  };
+
+  // Right dual-pane rows use their own sort, independent of the left pane.
+  const sortedRightItems = useMemo(() => {
+    const list = [...rightPaneItems];
+    list.sort((a, b) => {
+      if (a.isDirectory && !b.isDirectory) return -1;
+      if (!a.isDirectory && b.isDirectory) return 1;
+      let cmp = 0;
+      if (rightSortBy === 'size') cmp = a.sizeBytes - b.sizeBytes;
+      else if (rightSortBy === 'modified') cmp = a.modifiedMs - b.modifiedMs;
+      else if (rightSortBy === 'extension') cmp = naturalCompare(a.extension, b.extension) || naturalCompare(a.name, b.name);
+      else cmp = naturalCompare(a.name, b.name);
+      return rightSortAsc ? cmp : -cmp;
+    });
+    return list;
+  }, [rightPaneItems, rightSortBy, rightSortAsc]);
+
   const orderedPaths = useMemo(() => filteredItems.map((i) => i.path), [filteredItems]);
 
   useEffect(() => {
@@ -321,14 +457,21 @@ export const LayoutsView: React.FC = () => {
     );
   };
 
+  // 0. SPLIT PANELS (two independent folder views; own component keeps hook order stable)
+  if (layout === 'split') {
+    return <SplitPanelsView />;
+  }
+
   // 1. MODERN WORKSPACE TABLE
   if (layout === 'workspace') {
     return (
       <section
+        ref={mainScrollRef}
         onContextMenu={handleEmptyContextMenu}
         onDragOver={(e) => handleFolderDragOver(e, currentPath)}
         onDragLeave={(e) => handleFolderDragLeave(e, currentPath)}
         onDrop={(e) => handleFolderDrop(e, currentPath)}
+        onScroll={handleMainScroll}
         className={`flex-1 flex flex-col bg-[var(--center-bg)] overflow-y-auto relative ${
           dragTargetDir === currentPath ? 'ring-2 ring-inset ring-sky-400/70' : ''
         }`}
@@ -658,11 +801,13 @@ export const LayoutsView: React.FC = () => {
     const scrollbarSize = Math.round(Math.min(32, Math.max(10, (16 * thumbGridSize) / 96)));
     return (
       <section
+        ref={mainScrollRef}
         style={{ '--scrollbar-size': `${scrollbarSize}px` } as React.CSSProperties}
         onContextMenu={handleEmptyContextMenu}
         onDragOver={(e) => handleFolderDragOver(e, currentPath)}
         onDragLeave={(e) => handleFolderDragLeave(e, currentPath)}
         onDrop={(e) => handleFolderDrop(e, currentPath)}
+        onScroll={handleMainScroll}
         onWheel={(e) => {
           if (e.ctrlKey || e.metaKey) {
             e.preventDefault();
@@ -955,27 +1100,39 @@ export const LayoutsView: React.FC = () => {
       rightPanePath.split(/[\\/]/).length > 1
         ? rightPanePath.replace(/[\\/][^\\/]+$/, '')
         : null;
+    // The active pane (last one clicked) is where sidebar navigation lands.
+    const paneHeaderBorder = (pane: 'left' | 'right') =>
+      activePane === pane
+        ? 'border-[var(--primary)] shadow-[inset_0_-2px_0_var(--primary)]'
+        : 'border-[var(--border)]';
+    const paneTitleTone = (pane: 'left' | 'right') =>
+      activePane === pane
+        ? 'font-semibold text-[var(--foreground)]/85'
+        : 'text-[var(--muted-foreground)]';
 
     return (
-      <div className="flex-1 flex divide-x divide-[var(--border)] text-xs overflow-hidden">
+      <div ref={dualPaneRef} className="flex-1 flex text-xs overflow-hidden">
         {/* Left Pane */}
         <div
+          onMouseDownCapture={() => setActivePane('left')}
           onContextMenu={handleEmptyContextMenu}
           onDragOver={(e) => handleFolderDragOver(e, currentPath)}
           onDragLeave={(e) => handleFolderDragLeave(e, currentPath)}
           onDrop={(e) => handleFolderDrop(e, currentPath)}
-          className={`flex-1 flex flex-col bg-[var(--center-bg)] overflow-hidden ${
+          style={{ flex: `0 0 calc(${leftPanePct}% - 24px)`, minWidth: 0 }}
+          className={`flex flex-col bg-[var(--center-bg)] overflow-hidden ${
             dragTargetDir === currentPath ? 'ring-2 ring-inset ring-sky-400' : ''
           }`}
         >
-          <div className="px-3 py-2 bg-[var(--sidebar)] border-b border-[var(--border)] flex justify-between items-center">
-            <span className="font-mono font-semibold text-[var(--foreground)]/85 truncate">
+          <div className={`px-3 py-2 bg-[var(--sidebar)] border-b flex justify-between items-center ${paneHeaderBorder('left')}`}>
+            <span className={`font-mono truncate ${paneTitleTone('left')}`}>
               LEFT: {currentPath}
             </span>
             <span className="px-2 py-0.5 rounded bg-slate-700/70 text-[var(--foreground)] text-xs shrink-0">
               SOURCE
             </span>
           </div>
+          <PaneColumnHeader sortBy={sortBy} sortAsc={sortAsc} onSort={setSortBy} />
           <div className="divide-y divide-[var(--border)]/20 flex-1 overflow-y-auto">
             {filteredItems.map((f) => {
               const isSelected = isEntrySelected(f.path);
@@ -993,7 +1150,7 @@ export const LayoutsView: React.FC = () => {
                   onClick={(e) => handleSelectItem(e, f)}
                   onDoubleClick={() => handleOpenItem(f)}
                   onContextMenu={(e) => handleItemContextMenu(e, f)}
-                  className={`px-3 py-1 flex justify-between items-center cursor-pointer ${
+                  className={`px-3 py-1 flex items-center cursor-pointer ${
                     isSelected ? 'transition-none' : 'transition-colors duration-75'
                   } ${
                     isDropTarget
@@ -1005,18 +1162,25 @@ export const LayoutsView: React.FC = () => {
                           : 'hover:bg-white/[0.035]'
                   } ${isCut ? 'opacity-50' : ''}`}
                 >
-                  <span className="flex items-center gap-2 truncate">
+                  <span className="flex-1 min-w-0 flex items-center gap-2 truncate">
                     <FileThumbnail entry={f} size={18} />
                     <span className={`truncate ${f.isDirectory ? 'text-[var(--foreground)]/85' : ''}`}>{f.name}</span>
                   </span>
-                  <span className="font-mono text-[var(--muted-foreground)] shrink-0 ml-2">
-                    {formatBytes(f.sizeBytes, f.isDirectory)}
-                  </span>
+                  <PaneRowCells entry={f} />
                 </div>
               );
             })}
           </div>
         </div>
+
+        {/* Partition bar: drag to resize panes, double-click to reset to 50/50 */}
+        <div
+          onMouseDown={startDividerDrag}
+          onDoubleClick={() => setLeftPanePct(50)}
+          title="Drag to resize panes • Double-click to reset"
+          className="w-1.5 shrink-0 cursor-col-resize bg-[var(--border)] hover:bg-sky-400 transition-colors"
+          style={draggingDivider ? { background: 'rgb(56 189 248)' } : undefined}
+        />
 
         {/* Center Action Strip */}
         <div className="w-12 bg-[var(--sidebar)] flex flex-col items-center justify-center gap-3 p-1 select-none shrink-0">
@@ -1043,17 +1207,20 @@ export const LayoutsView: React.FC = () => {
           </button>
         </div>
 
+        <div className="w-px shrink-0 bg-[var(--border)]" />
+
         {/* Right Pane */}
         <div
+          onMouseDownCapture={() => setActivePane('right')}
           onDragOver={(e) => handleFolderDragOver(e, rightPanePath)}
           onDragLeave={(e) => handleFolderDragLeave(e, rightPanePath)}
           onDrop={(e) => handleFolderDrop(e, rightPanePath)}
-          className={`flex-1 flex flex-col bg-[var(--center-bg)] overflow-hidden ${
+          className={`flex-1 min-w-0 flex flex-col bg-[var(--center-bg)] overflow-hidden ${
             dragTargetDir === rightPanePath ? 'ring-2 ring-inset ring-sky-400 bg-sky-500/10' : ''
           }`}
         >
-          <div className="px-3 py-2 bg-[var(--sidebar)] border-b border-[var(--border)] flex justify-between items-center gap-2">
-            <span className="font-mono text-[var(--muted-foreground)] truncate">
+          <div className={`px-3 py-2 bg-[var(--sidebar)] border-b flex justify-between items-center gap-2 ${paneHeaderBorder('right')}`}>
+            <span className={`font-mono truncate ${paneTitleTone('right')}`}>
               RIGHT: {rightPanePath}
             </span>
             {rightParent && (
@@ -1066,8 +1233,9 @@ export const LayoutsView: React.FC = () => {
               </button>
             )}
           </div>
+          <PaneColumnHeader sortBy={rightSortBy} sortAsc={rightSortAsc} onSort={setRightSortBy} />
           <div className="divide-y divide-[var(--border)]/20 flex-1 overflow-y-auto">
-            {rightPaneItems.map((r) => (
+            {sortedRightItems.map((r) => (
               <div
                 key={r.path}
                 draggable
@@ -1077,7 +1245,7 @@ export const LayoutsView: React.FC = () => {
                 onDrop={r.isDirectory ? (e) => handleFolderDrop(e, r.path) : undefined}
                 onDoubleClick={() => (r.isDirectory ? navigateRightPane(r.path) : openEntry(r))}
                 onContextMenu={(e) => handleItemContextMenu(e, r)}
-                className={`px-3 py-1 flex justify-between items-center cursor-pointer transition-colors ${
+                className={`px-3 py-1 flex items-center cursor-pointer transition-colors ${
                   r.isDirectory && dragTargetDir === r.path
                     ? 'bg-sky-500/20 ring-1 ring-inset ring-sky-400'
                     : r.isDirectory
@@ -1085,13 +1253,11 @@ export const LayoutsView: React.FC = () => {
                       : 'hover:bg-white/[0.035]'
                 }`}
               >
-                <span className="flex items-center gap-2 truncate">
+                <span className="flex-1 min-w-0 flex items-center gap-2 truncate">
                   <FileThumbnail entry={r} size={18} />
                   <span className={`truncate ${r.isDirectory ? 'text-[var(--foreground)]/85' : ''}`}>{r.name}</span>
                 </span>
-                <span className="font-mono text-[var(--muted-foreground)] shrink-0 ml-2">
-                  {formatBytes(r.sizeBytes, r.isDirectory)}
-                </span>
+                <PaneRowCells entry={r} />
               </div>
             ))}
           </div>

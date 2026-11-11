@@ -1,13 +1,14 @@
 // Comprehensive curated icon catalog for Quick Access & Workflows
+import { PHOSPHOR_ICON_NAMES } from './phosphorIconNames';
 
 export interface IconCatalogItem {
   id: string;
   label: string;
-  category: 'folders' | 'dev' | 'media' | 'work' | 'fun' | 'symbols';
+  category: 'folders' | 'dev' | 'media' | 'work' | 'fun' | 'symbols' | 'phosphor';
 }
 
 export interface IconCategory {
-  id: 'all' | 'folders' | 'dev' | 'media' | 'work' | 'fun' | 'symbols';
+  id: 'all' | 'folders' | 'dev' | 'media' | 'work' | 'fun' | 'symbols' | 'phosphor';
   label: string;
   icon: string;
 }
@@ -20,9 +21,10 @@ export const ICON_CATEGORIES: IconCategory[] = [
   { id: 'work', label: 'Projects & Office', icon: 'briefcase' },
   { id: 'fun', label: 'Gaming & Chess', icon: 'crown' },
   { id: 'symbols', label: 'Badges & UI', icon: 'squares-four' },
+  { id: 'phosphor', label: 'All Phosphor', icon: 'squares-four' },
 ];
 
-export const ICON_CATALOG: IconCatalogItem[] = [
+const CURATED_ICON_CATALOG: IconCatalogItem[] = [
   { id: 'folder', label: 'Folder', category: 'folders' },
   { id: 'folder-open', label: 'Open Folder', category: 'folders' },
   { id: 'folder-star', label: 'Starred Folder', category: 'folders' },
@@ -292,4 +294,17 @@ export const ICON_CATALOG: IconCatalogItem[] = [
   { id: 'arrowClockwise', label: 'Refresh', category: 'symbols' },
   { id: 'toolBrush', label: 'Brush Tool', category: 'symbols' },
   { id: 'toolPencil', label: 'Pencil Tool', category: 'symbols' },
+];
+
+const phosphorLabel = (name: string) =>
+  name.split('-').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+
+// Curated entries first, then every remaining Phosphor icon (deduplicated by id).
+const curatedIds = new Set(CURATED_ICON_CATALOG.map((item) => item.id));
+
+export const ICON_CATALOG: IconCatalogItem[] = [
+  ...CURATED_ICON_CATALOG,
+  ...PHOSPHOR_ICON_NAMES.filter((name) => !curatedIds.has(name)).map(
+    (name): IconCatalogItem => ({ id: name, label: phosphorLabel(name), category: 'phosphor' }),
+  ),
 ];

@@ -28,7 +28,7 @@
   - [x] Delete file/directory with confirmation
   - [x] Safe Windows Recycle Bin integration (`Del`) vs. Permanent Delete (`Shift+Del`)
   - [ ] Conflict resolution dialog (skip, overwrite, rename, compare timestamps/hashes)
-  - [ ] Progress queue with pause/cancel and transfer speed telemetry
+  - [~] Progress queue with pause/cancel and transfer speed telemetry (transfer bar with progress, speed, ETA, and cancel is in; pause and queueing are not)
   - [x] Undo stack (`Ctrl+Z`) for rename, move, copy/paste, and create operations
 - [ ] **File System Watcher**
   - [ ] Real-time directory change notifications (debounced UI updates)
