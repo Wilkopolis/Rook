@@ -1,14 +1,12 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { useExplorerStore } from '../store/useExplorerStore';
+import { activeSplitTarget, effectiveSelection, useExplorerStore } from '../store/useExplorerStore';
 import { fsService } from '../services/fsService';
 import { KenneyIcon } from './KenneyIcon';
 
 export const ContextMenu: React.FC = () => {
   const {
     contextMenu,
-    currentPath,
     pinnedFolders,
-    selectedPaths,
     clipboard,
     undoStack,
     closeContextMenu,
@@ -22,13 +20,16 @@ export const ContextMenu: React.FC = () => {
     pasteClipboard,
     undoLastOperation,
     openPromptModal,
-    copySelectedToOtherPane,
-    moveSelectedToOtherPane,
     compressSelectedToZip,
     extractZipArchive,
     requestDeleteSelected,
     refresh,
   } = useExplorerStore();
+
+  // In the split layout the menu belongs to the active pane: its selection and its folder,
+  // not the details view's.
+  const selectedPaths = useExplorerStore((s) => effectiveSelection(s).selectedPaths);
+  const currentPath = useExplorerStore((s) => activeSplitTarget(s)?.panel.path ?? s.currentPath);
 
   const menuRef = useRef<HTMLDivElement>(null);
   const [coords, setCoords] = useState<{ x: number; y: number } | null>(null);
@@ -358,34 +359,6 @@ export const ContextMenu: React.FC = () => {
               <span>Rename</span>
             </span>
             <span className="text-[10px] text-[var(--muted-foreground)]">F2</span>
-          </button>
-
-          <button
-            onClick={() => {
-              closeContextMenu();
-              copySelectedToOtherPane();
-            }}
-            className="w-full px-3 py-1.5 hover:bg-[var(--primary)]/20 flex items-center justify-between cursor-pointer text-left"
-          >
-            <span className="flex items-center gap-2">
-              <KenneyIcon name="export" size={14} />
-              <span>Copy to Target Pane</span>
-            </span>
-            <span className="text-[10px] text-[var(--muted-foreground)]">F5</span>
-          </button>
-
-          <button
-            onClick={() => {
-              closeContextMenu();
-              moveSelectedToOtherPane();
-            }}
-            className="w-full px-3 py-1.5 hover:bg-[var(--primary)]/20 flex items-center justify-between cursor-pointer text-left"
-          >
-            <span className="flex items-center gap-2">
-              <KenneyIcon name="import" size={14} />
-              <span>Move to Target Pane</span>
-            </span>
-            <span className="text-[10px] text-[var(--muted-foreground)]">F6</span>
           </button>
 
           <button

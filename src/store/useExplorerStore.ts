@@ -5,6 +5,7 @@ import {
   FilePreview,
   FolderViewStyle,
   FolderSizeStats,
+  FolderLayout,
   FsEntry,
   LayoutMode,
   PinnedWorkspace,
@@ -13,6 +14,7 @@ import {
   SortField,
   SplitPanelIndex,
   SplitPanelState,
+  SplitPaneTab,
   SshAddRequest,
   SshConnectResult,
   SshConnection,
@@ -27,6 +29,7 @@ import {
 import { fsService } from '../services/fsService';
 import { logger } from '../services/logger';
 import { inferTags } from '../utils/format';
+import { applyColumns, getColumns, setColumnsChangeHandler } from '../components/FileColumns';
 import { visibleSplitItems } from '../utils/splitPanels';
 import { generateUrlShortcutName, buildInternetShortcutContent } from '../utils/dragDrop';
 
@@ -40,6 +43,11 @@ export type UndoOperation =
   | { kind: 'create'; createdPath: string };
 
 /** A copy/move batch in flight, shown by TransferBar. */
+export interface SplitPanelSort {
+  sortBy: SortField;
+  sortAsc: boolean;
+}
+
 export interface HistoryViewState {
   path: string;
   scrollTop: number;
@@ -102,7 +110,6 @@ interface ExplorerState {
   currentPath: string;
   parentPath: string | null;
   items: FsEntry[];
-  parentItems: FsEntry[];
   gitBranch: string | null;
   gitStatuses: Record<string, string>;
   thumbStats: ThumbCacheStats;
@@ -127,17 +134,15 @@ interface ExplorerState {
   captureHistoryView: () => void;
 
   // Dual-Pane right side state
-  rightPanePath: string;
-  rightPaneItems: FsEntry[];
   /** Dual-pane right side sorts independently from the left pane (session-only). */
-  rightSortBy: SortField;
-  rightSortAsc: boolean;
-  activePane: 'left' | 'right';
 
   // Split layout: per-panel listings for the active tab (session-only; paths,
   // history and selection live on `ExplorerTab.splitPanels`).
   splitPanelItems: [FsEntry[], FsEntry[]];
   splitPanelErrors: [string | null, string | null];
+  /** Independent column sort per split panel (session-only). */
+  splitPanelSorts: [SplitPanelSort, SplitPanelSort];
+  setSplitPanelSort: (index: 0 | 1, field: SortField) => void;
 
   // Selection, Clipboard, Undo & Preview
   selectedPath: string | null;
@@ -154,9 +159,16 @@ interface ExplorerState {
   deletePermanently: boolean;
   contextMenu: { x: number; y: number; entry: FsEntry | null } | null;
   promptModal: PromptModalConfig | null;
+  /** Item currently being renamed in place (F2 / Rename). */
+  inlineRename: { path: string; name: string; isDirectory: boolean } | null;
+  cancelInlineRename: () => void;
+  commitInlineRename: (value: string) => Promise<void>;
 
   // Layout & UI Options Ribbon
-  layout: LayoutMode;
+  /** Folder view mode for the main view. Never 'split': see `splitView`. */
+  layout: FolderLayout;
+  /** Global Rook display setting: show two independent folder panels. Independent of `layout`. */
+  splitView: boolean;
   thumbGridSize: number;
   folderViews: Record<string, FolderViewStyle>;
   sortBy: SortField;
@@ -178,7 +190,6 @@ interface ExplorerState {
   sshDrives: Record<string, SshDrive[]>;
   pinnedFolders: QuickAccessFolder[];
   workflows: Workflow[];
-  activeTagFilter: string;
   showSidebar: boolean;
   showInspector: boolean;
   showTerminal: boolean;
@@ -192,7 +203,6 @@ interface ExplorerState {
   // Actions
   init: () => Promise<void>;
   navigateTo: (path: string, pushHistory?: boolean, restoreView?: boolean) => Promise<void>;
-  navigateRightPane: (path: string) => Promise<void>;
   /** Sidebar navigation: goes to the active panel in the split and dual-pane layouts, else the main view. */
   navigateSidebar: (path: string) => Promise<void>;
   goBack: () => Promise<void>;
@@ -210,6 +220,10 @@ interface ExplorerState {
   setSplitPanelSelection: (index: SplitPanelIndex, paths: string[]) => void;
   /** Marks a split panel as the active one for the current tab. */
   setActiveSplitPanel: (index: SplitPanelIndex) => void;
+  addSplitPaneTab: (index: SplitPanelIndex, path?: string) => Promise<void>;
+  switchSplitPaneTab: (index: SplitPanelIndex, tabId: string) => Promise<void>;
+  closeSplitPaneTab: (index: SplitPanelIndex, tabId: string) => Promise<void>;
+  reorderSplitPaneTabs: (index: SplitPanelIndex, fromId: string, toId: string) => void;
   // Keyboard routing: these act on the active split panel and return false when the
   // split layout isn't showing, so callers can fall back to the single-view behavior.
   splitNavigateHistory: (dir: 'back' | 'forward' | 'up') => boolean;
@@ -264,6 +278,8 @@ interface ExplorerState {
   openEntry: (entry: FsEntry) => Promise<void>;
   revealInExplorer: (path?: string) => Promise<void>;
   openContextMenu: (x: number, y: number, entry: FsEntry | null) => void;
+  /** Right-click on a row in a split pane: selects within that pane, makes it active, opens the menu. */
+  openSplitPanelContextMenu: (index: SplitPanelIndex, x: number, y: number, entry: FsEntry) => void;
   closeContextMenu: () => void;
   openPromptModal: (config: PromptModalConfig) => void;
   closePromptModal: () => void;
@@ -292,17 +308,20 @@ interface ExplorerState {
   reorderTabs: (fromId: string, toId: string) => void;
 
   // Layout & Ribbon Actions
-  setLayout: (layout: LayoutMode, opts?: { saveForFolder?: boolean }) => void;
+  /** Picks a folder view. Choosing one also leaves split view. */
+  setLayout: (layout: FolderLayout, opts?: { saveForFolder?: boolean }) => void;
+  setSplitView: (on: boolean) => void;
+  toggleSplitView: () => void;
   setThumbGridSize: (size: number) => void;
+  themePreference: ThemePreference;
+  setThemePreference: (theme: ThemePreference) => void;
   /** User overrides of the icon (and tint) shown per file extension, keyed by lowercase extension without dot. */
   extensionIcons: Record<string, ExtensionIconStyle>;
   setExtensionIcon: (ext: string, icon: string, color: string) => void;
   resetExtensionIcon: (ext: string) => void;
   setSortBy: (field: SortField) => void;
-  setRightSortBy: (field: SortField) => void;
   toggleSortAsc: () => void;
   setFilterQuery: (q: string) => void;
-  setActiveTagFilter: (tag: string) => void;
   toggleSidebar: () => void;
   toggleInspector: () => void;
   toggleTerminal: () => void;
@@ -313,7 +332,6 @@ interface ExplorerState {
   clearOptionsInitialCategory: () => void;
   toggleHiddenFiles: () => void;
   setDeletePermanently: (perm: boolean) => void;
-  setActivePane: (pane: 'left' | 'right') => void;
   addTagToPath: (path: string, tag: string) => void;
 
   // File CRUD & Shell Actions
@@ -324,8 +342,6 @@ interface ExplorerState {
   confirmDeleteSelected: () => Promise<void>;
   cancelDeleteSelected: () => void;
   deleteSelected: () => Promise<void>;
-  copySelectedToOtherPane: () => Promise<void>;
-  moveSelectedToOtherPane: () => Promise<void>;
   dropEntriesToDir: (sourcePaths: string[], targetDir: string, copy?: boolean) => Promise<void>;
   dropUrlToDir: (url: string, targetDir?: string, title?: string) => Promise<string | null>;
   lastDroppedUrl: { url: string; targetDir: string; title?: string; createdPath?: string } | null;
@@ -334,6 +350,26 @@ interface ExplorerState {
   openPowershellCurrent: () => Promise<void>;
 }
 
+/**
+ * The selection file actions should operate on: the active split pane's when the split layout is
+ * showing, otherwise the details-view selection. Returns existing array references (no copies) so
+ * it is safe to use inside a zustand selector.
+ */
+export const effectiveSelection = (
+  s: Pick<ExplorerState, 'splitView' | 'tabs' | 'activeTabId' | 'selectedPath' | 'selectedPaths'>
+): { selectedPath: string | null; selectedPaths: string[] } => {
+  const split = activeSplitTarget(s);
+  return split
+    ? { selectedPath: split.panel.selectedPath, selectedPaths: split.panel.selectedPaths }
+    : { selectedPath: s.selectedPath, selectedPaths: s.selectedPaths };
+};
+
+/** Paths a copy/cut/compress/delete should act on right now. */
+const effectiveTargets = (s: Parameters<typeof effectiveSelection>[0]): string[] => {
+  const { selectedPath, selectedPaths } = effectiveSelection(s);
+  return selectedPaths.length > 0 ? selectedPaths : selectedPath ? [selectedPath] : [];
+};
+
 const newSplitPanel = (path: string): SplitPanelState => ({
   path,
   history: [path],
@@ -341,6 +377,22 @@ const newSplitPanel = (path: string): SplitPanelState => ({
   selectedPath: null,
   selectedPaths: [],
 });
+
+const snapshotPaneTab = (id: string, p: SplitPanelState): SplitPaneTab => ({
+  id,
+  path: p.path,
+  history: p.history,
+  historyIndex: p.historyIndex,
+  selectedPath: p.selectedPath,
+  selectedPaths: p.selectedPaths,
+});
+
+/** Ensure a pane has a tab list (legacy panes get one implicit tab) and write the live state into the active tab. */
+const withPaneTabs = (p: SplitPanelState): { tabs: SplitPaneTab[]; activeId: string } => {
+  const activeId = p.activePaneTabId ?? 'pt-0';
+  const tabs = p.paneTabs?.length ? p.paneTabs : [snapshotPaneTab(activeId, p)];
+  return { tabs: tabs.map((t) => (t.id === activeId ? snapshotPaneTab(activeId, p) : t)), activeId };
+};
 
 const parentOf = (p: string): string | null => {
   const trimmed = p.replace(/[\\/]+$/, '');
@@ -352,10 +404,10 @@ const parentOf = (p: string): string | null => {
 };
 
 /** The active split panel of the active tab, or null when the split layout isn't showing. */
-const activeSplitTarget = (
-  s: Pick<ExplorerState, 'layout' | 'tabs' | 'activeTabId'>
+export const activeSplitTarget = (
+  s: Pick<ExplorerState, 'splitView' | 'tabs' | 'activeTabId'>
 ): { index: SplitPanelIndex; panel: SplitPanelState } | null => {
-  if (s.layout !== 'split') return null;
+  if (!s.splitView) return null;
   const tab = s.tabs.find((t) => t.id === s.activeTabId);
   if (!tab?.splitPanels) return null;
   const index: SplitPanelIndex = tab.activeSplitPanel ?? 0;
@@ -390,8 +442,8 @@ const SESSION_KEY = 'rook_session_v1';
 interface SavedSession {
   tabs?: ExplorerTab[];
   activeTabId?: string;
-  rightPanePath?: string;
-  layout?: LayoutMode;
+  layout?: FolderLayout;
+  splitView?: boolean;
   sortBy?: SortField;
   sortAsc?: boolean;
   showSidebar?: boolean;
@@ -399,9 +451,33 @@ interface SavedSession {
   showHiddenFiles?: boolean;
 }
 
+/** Layout modes that were removed; saved prefs may still name them. */
+const normalizeLayout = (layout: unknown): LayoutMode | undefined => {
+  if (layout === 'workspace' || layout === 'thumbnails' || layout === 'split' || layout === 'command') {
+    return layout;
+  }
+  if (layout === 'dualpane') return 'split';
+  if (layout === 'miller' || layout === 'faceted') return 'workspace';
+  return undefined;
+};
+
+/** Splits a saved layout into the folder view and the split-view flag it implies. */
+const splitLayoutMode = (
+  layout: LayoutMode | undefined
+): { layout?: FolderLayout; splitView?: boolean } =>
+  layout === 'split' ? { splitView: true } : layout ? { layout } : {};
+
 const loadSavedSession = (): SavedSession => {
   try {
-    return JSON.parse(localStorage.getItem(SESSION_KEY) || '{}');
+    const parsed = JSON.parse(localStorage.getItem(SESSION_KEY) || '{}');
+    if (parsed && parsed.layout !== undefined) {
+      // Older sessions stored split view as layout 'split'.
+      const migrated = splitLayoutMode(normalizeLayout(parsed.layout));
+      parsed.layout = migrated.layout;
+      if (migrated.splitView) parsed.splitView = true;
+    }
+    if (parsed && typeof parsed.splitView !== 'boolean') delete parsed.splitView;
+    return parsed;
   } catch {
     return {};
   }
@@ -418,8 +494,8 @@ const persistSession = (state: Partial<ExplorerState>) => {
     const next: SavedSession = {
       tabs: state.tabs ?? prev.tabs,
       activeTabId: state.activeTabId ?? prev.activeTabId,
-      rightPanePath: state.rightPanePath ?? prev.rightPanePath,
       layout: state.layout ?? prev.layout,
+      splitView: state.splitView ?? prev.splitView,
       sortBy: state.sortBy ?? prev.sortBy,
       sortAsc: state.sortAsc ?? prev.sortAsc,
       showSidebar: state.showSidebar ?? prev.showSidebar,
@@ -476,6 +552,17 @@ const savedThumbGridSize = (): number => {
   return 96;
 };
 
+export type ThemePreference = 'light' | 'dark' | 'system';
+const THEME_KEY = 'rook_theme_preference';
+
+const savedThemePreference = (): ThemePreference => {
+  try {
+    const saved = localStorage.getItem(THEME_KEY);
+    if (saved === 'light' || saved === 'dark' || saved === 'system') return saved;
+  } catch {}
+  return 'system';
+};
+
 const FOLDER_VIEWS_KEY = 'rook_folder_views_v1';
 
 /** Key for `folderViews`. Windows paths are case-insensitive, so one folder gets one key. */
@@ -484,7 +571,28 @@ export const folderViewKey = (path: string) =>
 
 const savedFolderViews = (): Record<string, FolderViewStyle> => {
   try {
-    return JSON.parse(localStorage.getItem(FOLDER_VIEWS_KEY) || '{}');
+    const parsed = JSON.parse(localStorage.getItem(FOLDER_VIEWS_KEY) || '{}');
+    let cleaned = false;
+    for (const key of Object.keys(parsed)) {
+      const entry = parsed[key];
+      if (!entry || entry.layout === undefined) continue;
+      // Split view isn't remembered per folder. Older entries may hold 'split' (or the removed
+      // 'dualpane'); drop the layout but keep the entry's sort, columns and thumb size.
+      const layout = normalizeLayout(entry.layout);
+      if (layout === 'split' || layout === undefined) {
+        delete entry.layout;
+        cleaned = true;
+        if (Object.keys(entry).length === 0) delete parsed[key];
+      } else {
+        entry.layout = layout;
+      }
+    }
+    if (cleaned) {
+      try {
+        localStorage.setItem(FOLDER_VIEWS_KEY, JSON.stringify(parsed));
+      } catch {}
+    }
+    return parsed;
   } catch {
     return {};
   }
@@ -577,10 +685,10 @@ const defaultWorkflows = (): Workflow[] => [
     id: 'wf-split-commander',
     label: 'Split Commander',
     path: 'C:\\Projects\\Repos\\Rook',
-    rightPanePath: 'C:\\Projects\\Repos',
-    icon: 'scrollHorizontal',
-    iconColor: '#a855f7',
-    layout: 'dualpane',
+    icon: 'columns',
+    iconColor: '#14b8a6',
+    layout: 'workspace',
+    splitView: true,
     tabs: [
       {
         id: 'tab-wf-split',
@@ -592,43 +700,34 @@ const defaultWorkflows = (): Workflow[] => [
     ],
     activeTabId: 'tab-wf-split',
   },
-  {
-    id: 'wf-deep-tree',
-    label: 'Deep Tree Browser',
-    path: 'C:\\Projects\\Repos\\Rook\\src',
-    icon: 'barsVertical',
-    iconColor: '#34d399',
-    layout: 'miller',
-    tabs: [
-      {
-        id: 'tab-wf-tree',
-        title: 'src',
-        path: 'C:\\Projects\\Repos\\Rook\\src',
-        history: ['C:\\Projects\\Repos\\Rook\\src'],
-        historyIndex: 0,
-      },
-    ],
-    activeTabId: 'tab-wf-tree',
-  },
-  {
-    id: 'wf-semantic-tags',
-    label: 'Semantic Tags',
-    path: 'C:\\Projects\\Repos\\Rook',
-    icon: 'menuGrid',
-    iconColor: '#f59e0b',
-    layout: 'faceted',
-    tabs: [
-      {
-        id: 'tab-wf-tags',
-        title: 'Rook',
-        path: 'C:\\Projects\\Repos\\Rook',
-        history: ['C:\\Projects\\Repos\\Rook'],
-        historyIndex: 0,
-      },
-    ],
-    activeTabId: 'tab-wf-tags',
-  },
 ];
+
+/** Deep copy of a split panel, so a saved workflow never shares state with the live tabs. */
+const cloneSplitPanel = (p: SplitPanelState): SplitPanelState => ({
+  ...p,
+  path: sanitizePath(p.path),
+  history: Array.isArray(p.history) ? p.history.map(sanitizePath) : [sanitizePath(p.path)],
+  selectedPaths: Array.isArray(p.selectedPaths) ? [...p.selectedPaths] : [],
+  ...(Array.isArray(p.paneTabs) && {
+    paneTabs: p.paneTabs.map((pt) => ({
+      ...pt,
+      path: sanitizePath(pt.path),
+      history: Array.isArray(pt.history) ? pt.history.map(sanitizePath) : [sanitizePath(pt.path)],
+      selectedPaths: Array.isArray(pt.selectedPaths) ? [...pt.selectedPaths] : [],
+    })),
+  }),
+});
+
+/** Deep copy of a tab for saving into, or restoring from, a workflow (split panels included). */
+const cloneWorkflowTab = (t: ExplorerTab): ExplorerTab => ({
+  ...t,
+  path: sanitizePath(t.path),
+  history: Array.isArray(t.history) ? [...t.history] : [t.path],
+  ...(Array.isArray(t.splitPanels) &&
+    t.splitPanels.length === 2 && {
+      splitPanels: [cloneSplitPanel(t.splitPanels[0]), cloneSplitPanel(t.splitPanels[1])],
+    }),
+});
 
 const savedWorkflows = (): Workflow[] => {
   try {
@@ -636,13 +735,17 @@ const savedWorkflows = (): Workflow[] => {
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed.map((wf) => ({
-          ...wf,
-          path: sanitizePath(wf.path),
-          tabs: Array.isArray(wf.tabs)
-            ? wf.tabs.map((t: ExplorerTab) => ({ ...t, path: sanitizePath(t.path) }))
-            : [],
-        }));
+        return parsed.map((wf) => {
+          // Older workflows stored split view as layout 'split'.
+          const view = splitLayoutMode(normalizeLayout(wf.layout));
+          return {
+            ...wf,
+            layout: view.layout ?? 'workspace',
+            splitView: typeof wf.splitView === 'boolean' ? wf.splitView : view.splitView ?? false,
+            path: sanitizePath(wf.path),
+            tabs: Array.isArray(wf.tabs) ? wf.tabs.map(cloneWorkflowTab) : [],
+          };
+        });
       }
     }
     // Migration from old rook_pinned_folders_v1
@@ -936,7 +1039,6 @@ export const useExplorerStore = create<ExplorerState>((set, get) => ({
   currentPath: '',
   parentPath: null,
   items: [],
-  parentItems: [],
   gitBranch: null,
   gitStatuses: {},
   thumbStats: { count: 0, totalBytes: 0 },
@@ -974,14 +1076,19 @@ export const useExplorerStore = create<ExplorerState>((set, get) => ({
     set({ historyViewStates: { ...s.historyViewStates, [`${tab.id}:${tab.historyIndex}`]: state } });
   },
 
-  rightPanePath: '',
-  rightPaneItems: [],
-  rightSortBy: 'name',
-  rightSortAsc: true,
-  activePane: 'left',
 
   splitPanelItems: [[], []],
   splitPanelErrors: [null, null],
+  splitPanelSorts: [
+    { sortBy: initialSession.sortBy ?? 'name', sortAsc: initialSession.sortAsc ?? true },
+    { sortBy: initialSession.sortBy ?? 'name', sortAsc: initialSession.sortAsc ?? true },
+  ],
+  setSplitPanelSort: (index, field) => {
+    const sorts: [SplitPanelSort, SplitPanelSort] = [...get().splitPanelSorts];
+    const cur = sorts[index];
+    sorts[index] = { sortBy: field, sortAsc: cur.sortBy === field ? !cur.sortAsc : true };
+    set({ splitPanelSorts: sorts });
+  },
 
   selectedPath: null,
   selectedPaths: [],
@@ -1005,9 +1112,26 @@ export const useExplorerStore = create<ExplorerState>((set, get) => ({
   deletePermanently: false,
   contextMenu: null,
   promptModal: null,
+  inlineRename: null,
+  cancelInlineRename: () => set({ inlineRename: null }),
+  commitInlineRename: async (value) => {
+    const target = get().inlineRename;
+    if (!target) return;
+    set({ inlineRename: null });
+    const clean = value.trim();
+    if (!clean || clean === target.name) return;
+    set({ selectedPath: target.path, selectedPaths: [target.path] });
+    try {
+      await get().renameSelected(clean);
+    } catch (err) {
+      set({ statusMessage: `Rename failed: ${err instanceof Error ? err.message : String(err)}` });
+    }
+  },
 
   layout: initialSession.layout ?? 'workspace',
+  splitView: initialSession.splitView ?? false,
   thumbGridSize: savedThumbGridSize(),
+  themePreference: savedThemePreference(),
   extensionIcons: savedExtensionIcons(),
   folderViews: savedFolderViews(),
   sortBy: initialSession.sortBy ?? 'name',
@@ -1023,7 +1147,6 @@ export const useExplorerStore = create<ExplorerState>((set, get) => ({
   sshDrives: savedSshDrives(),
   pinnedFolders: savedQuickAccessFolders(),
   workflows: savedWorkflows(),
-  activeTagFilter: 'all',
   showSidebar: initialSession.showSidebar ?? true,
   showInspector: initialSession.showInspector ?? true,
   showTerminal: false,
@@ -1053,19 +1176,15 @@ export const useExplorerStore = create<ExplorerState>((set, get) => ({
       const tabsToUse = validSavedTabs || [defaultTab];
       const activeTab =
         tabsToUse.find((t) => t.id === sess.activeTabId) || tabsToUse[0];
-      const rightTarget = sess.rightPanePath || info.home || info.cwd;
-
       set({
         drives: info.drives,
         driveDetails: info.driveDetails || [],
         homeDir: info.home,
         tabs: tabsToUse,
         activeTabId: activeTab.id,
-        rightPanePath: rightTarget,
       });
 
       await get().navigateTo(activeTab.path, false);
-      await get().navigateRightPane(rightTarget);
       await get().refreshThumbStats();
       await get().refreshFolderSizeStats();
       await get().refreshLogSettings();
@@ -1139,12 +1258,9 @@ export const useExplorerStore = create<ExplorerState>((set, get) => ({
 
   navigateSidebar: async (targetPath: string) => {
     const s = get();
-    if (s.layout === 'split') {
+    if (s.splitView) {
       const target = activeSplitTarget(s);
       if (target) return s.navigateSplitPanel(target.index, targetPath);
-    }
-    if (s.layout === 'dualpane' && s.activePane === 'right') {
-      return s.navigateRightPane(targetPath);
     }
     return s.navigateTo(targetPath);
   },
@@ -1183,16 +1299,6 @@ export const useExplorerStore = create<ExplorerState>((set, get) => ({
         tags: inferTags(item, custom),
       }));
 
-      let parentItems: FsEntry[] = [];
-      if (res.parentPath) {
-        try {
-          const parentRes = await fsService.listDirectory(res.parentPath, false);
-          parentItems = parentRes.items;
-        } catch {
-          // ignore
-        }
-      }
-
       const { tabs, activeTabId } = get();
       const folderName = res.path.split(/[\\/]/).filter(Boolean).pop() || res.path;
       const updatedTabs = tabs.map((t) => {
@@ -1230,7 +1336,6 @@ export const useExplorerStore = create<ExplorerState>((set, get) => ({
         currentPath: res.path,
         parentPath: res.parentPath,
         items: enriched,
-        parentItems,
         gitBranch: git.branch,
         gitStatuses: git.statuses,
         tabs: updatedTabs,
@@ -1245,10 +1350,12 @@ export const useExplorerStore = create<ExplorerState>((set, get) => ({
             return historyView.scrollTop > 0 ? { ...rest, [res.path]: historyView.scrollTop } : rest;
           })(),
         }),
+        // Only the folder view is restored; split view is global and never per folder.
         ...(savedView?.layout && { layout: savedView.layout }),
         ...(savedView?.sortBy && { sortBy: savedView.sortBy, sortAsc: savedView.sortAsc ?? true }),
         ...(openedFolder && { thumbGridSize: savedView?.thumbSize ?? savedThumbGridSize() }),
       });
+      if (savedView?.columns) applyColumns(savedView.columns);
       persistSession({ tabs: updatedTabs, activeTabId, layout: get().layout });
 
       if (get().deepSearch && get().filterQuery.trim()) {
@@ -1285,21 +1392,6 @@ export const useExplorerStore = create<ExplorerState>((set, get) => ({
       }, 400);
     } catch (err: any) {
       set({ error: err.message, isLoading: false });
-    }
-  },
-
-  navigateRightPane: async (targetPath: string) => {
-    try {
-      const res = await fsService.listDirectory(targetPath, false);
-      const custom = get().customTags;
-      const enriched = res.items.map((item) => ({
-        ...item,
-        tags: inferTags(item, custom),
-      }));
-      set({ rightPanePath: res.path, rightPaneItems: enriched });
-      persistSession({ rightPanePath: res.path });
-    } catch (err: any) {
-      set({ statusMessage: `Right pane error: ${err.message}` });
     }
   },
 
@@ -1441,6 +1533,100 @@ export const useExplorerStore = create<ExplorerState>((set, get) => ({
     set({ tabs: tabs.map((t) => (t.id === activeTabId ? { ...t, activeSplitPanel: index } : t)) });
   },
 
+  addSplitPaneTab: async (index, path) => {
+    const { tabs, activeTabId } = get();
+    const tab = tabs.find((t) => t.id === activeTabId);
+    const panel = tab?.splitPanels?.[index];
+    if (!tab || !panel) return;
+    const { tabs: paneTabs } = withPaneTabs(panel);
+    const id = `pt-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+    const start = path ?? panel.path;
+    const fresh: SplitPanelState = { ...newSplitPanel(start), paneTabs: [...paneTabs, snapshotPaneTab(id, newSplitPanel(start))], activePaneTabId: id };
+    const updated = tabs.map((t) => {
+      if (t.id !== activeTabId || !t.splitPanels) return t;
+      const panels: [SplitPanelState, SplitPanelState] = [t.splitPanels[0], t.splitPanels[1]];
+      panels[index] = fresh;
+      return { ...t, splitPanels: panels, activeSplitPanel: index };
+    });
+    set({ tabs: updated });
+    persistSession({ tabs: updated, activeTabId });
+    await get().navigateSplitPanel(index, start, false);
+  },
+
+  switchSplitPaneTab: async (index, tabId) => {
+    const { tabs, activeTabId } = get();
+    const panel = tabs.find((t) => t.id === activeTabId)?.splitPanels?.[index];
+    if (!panel || (panel.activePaneTabId ?? 'pt-0') === tabId) return;
+    const { tabs: paneTabs } = withPaneTabs(panel);
+    const target = paneTabs.find((t) => t.id === tabId);
+    if (!target) return;
+    const next: SplitPanelState = { ...target, paneTabs, activePaneTabId: tabId };
+    const updated = tabs.map((t) => {
+      if (t.id !== activeTabId || !t.splitPanels) return t;
+      const panels: [SplitPanelState, SplitPanelState] = [t.splitPanels[0], t.splitPanels[1]];
+      panels[index] = next;
+      return { ...t, splitPanels: panels, activeSplitPanel: index };
+    });
+    set({ tabs: updated });
+    persistSession({ tabs: updated, activeTabId });
+    await get().navigateSplitPanel(index, target.path, false);
+  },
+
+  closeSplitPaneTab: async (index, tabId) => {
+    const { tabs, activeTabId } = get();
+    const panel = tabs.find((t) => t.id === activeTabId)?.splitPanels?.[index];
+    if (!panel) return;
+    const { tabs: paneTabs, activeId } = withPaneTabs(panel);
+    if (paneTabs.length <= 1) return; // a pane always keeps one tab
+    const pos = paneTabs.findIndex((t) => t.id === tabId);
+    if (pos < 0) return;
+    const remaining = paneTabs.filter((t) => t.id !== tabId);
+    if (tabId !== activeId) {
+      const updated = tabs.map((t) => {
+        if (t.id !== activeTabId || !t.splitPanels) return t;
+        const panels: [SplitPanelState, SplitPanelState] = [t.splitPanels[0], t.splitPanels[1]];
+        panels[index] = { ...panel, paneTabs: remaining, activePaneTabId: activeId };
+        return { ...t, splitPanels: panels };
+      });
+      set({ tabs: updated });
+      persistSession({ tabs: updated, activeTabId });
+      return;
+    }
+    const neighbor = remaining[Math.min(pos, remaining.length - 1)];
+    const next: SplitPanelState = { ...neighbor, paneTabs: remaining, activePaneTabId: neighbor.id };
+    const updated = tabs.map((t) => {
+      if (t.id !== activeTabId || !t.splitPanels) return t;
+      const panels: [SplitPanelState, SplitPanelState] = [t.splitPanels[0], t.splitPanels[1]];
+      panels[index] = next;
+      return { ...t, splitPanels: panels };
+    });
+    set({ tabs: updated });
+    persistSession({ tabs: updated, activeTabId });
+    await get().navigateSplitPanel(index, neighbor.path, false);
+  },
+
+  reorderSplitPaneTabs: (index, fromId, toId) => {
+    if (fromId === toId) return;
+    const { tabs, activeTabId } = get();
+    const panel = tabs.find((t) => t.id === activeTabId)?.splitPanels?.[index];
+    if (!panel) return;
+    const { tabs: paneTabs, activeId } = withPaneTabs(panel);
+    const fromIdx = paneTabs.findIndex((t) => t.id === fromId);
+    const toIdx = paneTabs.findIndex((t) => t.id === toId);
+    if (fromIdx < 0 || toIdx < 0) return;
+    const reordered = [...paneTabs];
+    const [moved] = reordered.splice(fromIdx, 1);
+    reordered.splice(toIdx, 0, moved);
+    const updated = tabs.map((t) => {
+      if (t.id !== activeTabId || !t.splitPanels) return t;
+      const panels: [SplitPanelState, SplitPanelState] = [t.splitPanels[0], t.splitPanels[1]];
+      panels[index] = { ...panel, paneTabs: reordered, activePaneTabId: activeId };
+      return { ...t, splitPanels: panels };
+    });
+    set({ tabs: updated });
+    persistSession({ tabs: updated, activeTabId });
+  },
+
   splitNavigateHistory: (dir) => {
     const target = activeSplitTarget(get());
     if (!target) return false;
@@ -1455,7 +1641,7 @@ export const useExplorerStore = create<ExplorerState>((set, get) => ({
     const s = get();
     const target = activeSplitTarget(s);
     if (!target) return false;
-    const rows = visibleSplitItems(s.splitPanelItems[target.index], s.showHiddenFiles, s.sortBy, s.sortAsc);
+    const rows = visibleSplitItems(s.splitPanelItems[target.index], s.showHiddenFiles, s.splitPanelSorts[target.index].sortBy, s.splitPanelSorts[target.index].sortAsc);
     if (rows.length === 0) return true;
     const cur = rows.findIndex((r) => r.path === target.panel.selectedPath);
     let next = 0;
@@ -1470,7 +1656,7 @@ export const useExplorerStore = create<ExplorerState>((set, get) => ({
     const s = get();
     const target = activeSplitTarget(s);
     if (!target) return false;
-    const rows = visibleSplitItems(s.splitPanelItems[target.index], s.showHiddenFiles, s.sortBy, s.sortAsc);
+    const rows = visibleSplitItems(s.splitPanelItems[target.index], s.showHiddenFiles, s.splitPanelSorts[target.index].sortBy, s.splitPanelSorts[target.index].sortAsc);
     if (rows.length > 0) {
       s.setSplitPanelSelection(target.index, rows.map((r) => r.path));
       set({ statusMessage: `Selected ${rows.length} items` });
@@ -1531,10 +1717,9 @@ export const useExplorerStore = create<ExplorerState>((set, get) => ({
   },
 
   refresh: async () => {
-    const { currentPath, rightPanePath } = get();
+    const { currentPath } = get();
     if (currentPath) await get().navigateTo(currentPath, false);
-    if (rightPanePath) await get().navigateRightPane(rightPanePath);
-    if (get().layout === 'split') await get().initSplitPanels();
+    if (get().splitView) await get().initSplitPanels();
     await get().refreshThumbStats();
   },
 
@@ -1583,8 +1768,7 @@ export const useExplorerStore = create<ExplorerState>((set, get) => ({
   },
 
   copyToClipboard: () => {
-    const { selectedPaths, selectedPath } = get();
-    const paths = selectedPaths.length > 0 ? selectedPaths : selectedPath ? [selectedPath] : [];
+    const paths = effectiveTargets(get());
     if (paths.length === 0) return;
     set({
       clipboard: { paths, mode: 'copy' },
@@ -1593,8 +1777,7 @@ export const useExplorerStore = create<ExplorerState>((set, get) => ({
   },
 
   cutToClipboard: () => {
-    const { selectedPaths, selectedPath } = get();
-    const paths = selectedPaths.length > 0 ? selectedPaths : selectedPath ? [selectedPath] : [];
+    const paths = effectiveTargets(get());
     if (paths.length === 0) return;
     set({
       clipboard: { paths, mode: 'cut' },
@@ -1677,6 +1860,17 @@ export const useExplorerStore = create<ExplorerState>((set, get) => ({
     set({ contextMenu: { x, y, entry } });
   },
 
+  openSplitPanelContextMenu: (index, x, y, entry) => {
+    const s = get();
+    s.setActiveSplitPanel(index);
+    const panel = s.tabs.find((t) => t.id === s.activeTabId)?.splitPanels?.[index];
+    // Like the details view: keep a multi-selection if the row is already in it, else select just this row.
+    if (!panel?.selectedPaths.includes(entry.path)) {
+      s.selectSplitPanelEntry(index, entry);
+    }
+    set({ contextMenu: { x, y, entry } });
+  },
+
   closeContextMenu: () => {
     set({ contextMenu: null });
   },
@@ -1740,9 +1934,15 @@ export const useExplorerStore = create<ExplorerState>((set, get) => ({
       const style = layout === 'thumbnails' ? { layout, thumbSize: thumbGridSize } : { layout };
       set({ folderViews: persistFolderView(folderViews, currentPath, style) });
     }
-    set({ layout });
-    persistSession({ layout });
+    set({ layout, splitView: false });
+    persistSession({ layout, splitView: false });
   },
+  setSplitView: (on) => {
+    if (on === get().splitView) return;
+    set({ splitView: on });
+    persistSession({ splitView: on });
+  },
+  toggleSplitView: () => get().setSplitView(!get().splitView),
   setExtensionIcon: (ext, icon, color) => {
     const key = ext.trim().replace(/^\.+/, '').toLowerCase();
     if (!key) return;
@@ -1756,6 +1956,14 @@ export const useExplorerStore = create<ExplorerState>((set, get) => ({
     set({ extensionIcons: rest });
     persistExtensionIcons(rest);
   },
+  setThemePreference: (theme) => {
+    if (theme === get().themePreference) return;
+    try {
+      localStorage.setItem(THEME_KEY, theme);
+    } catch {}
+    set({ themePreference: theme });
+  },
+
   setThumbGridSize: (size) => {
     const clamped = Math.max(40, Math.min(240, Math.round(size)));
     const { thumbGridSize, currentPath, layout, folderViews } = get();
@@ -1770,10 +1978,6 @@ export const useExplorerStore = create<ExplorerState>((set, get) => ({
         ? persistFolderView(folderViews, currentPath, { layout, thumbSize: clamped })
         : folderViews,
     });
-  },
-  setRightSortBy: (field) => {
-    const { rightSortBy, rightSortAsc } = get();
-    set({ rightSortBy: field, rightSortAsc: rightSortBy === field ? !rightSortAsc : true });
   },
   setSortBy: (sortBy) => {
     const sortAsc = get().sortBy === sortBy ? !get().sortAsc : true;
@@ -2058,27 +2262,28 @@ export const useExplorerStore = create<ExplorerState>((set, get) => ({
       currentPath,
       tabs,
       activeTabId,
-      layout,
-      rightPanePath,
+      layout: folderLayout,
+      splitView,
       sortBy,
       sortAsc,
       showInspector,
       showHiddenFiles,
       workflows,
     } = get();
+    // What's on screen, for the default label and icon. The workflow itself stores the folder
+    // layout and the split-view flag separately.
+    const layout: LayoutMode = splitView ? 'split' : folderLayout;
 
     const rootPath = (currentPath || tabs[0]?.path || 'C:\\').replace(/[\\/]+$/, '');
     const folderName = rootPath.split(/[\\/]/).filter(Boolean).pop() || rootPath;
     const layoutShort =
-      layout === 'miller'
-        ? 'Tree'
-        : layout === 'dualpane'
-          ? 'Split'
-          : layout === 'faceted'
-            ? 'Tags'
-            : layout === 'command'
-              ? 'Fuzzy'
-              : 'Workspace';
+      layout === 'split'
+        ? 'Split'
+        : layout === 'command'
+          ? 'Fuzzy'
+          : layout === 'thumbnails'
+            ? 'Thumbnails'
+            : 'Workspace';
 
     const defaultLabel = customLabel || `${folderName} (${layoutShort})`;
 
@@ -2093,20 +2298,16 @@ export const useExplorerStore = create<ExplorerState>((set, get) => ({
 
     const iconMap: Record<LayoutMode, { icon: string; color: string }> = {
       workspace: { icon: 'crown', color: '#38bdf8' },
-      miller: { icon: 'barsVertical', color: '#34d399' },
-      dualpane: { icon: 'scrollHorizontal', color: '#a855f7' },
       split: { icon: 'columns', color: '#14b8a6' },
-      faceted: { icon: 'menuGrid', color: '#f59e0b' },
       command: { icon: 'zoom', color: '#f43f5e' },
       thumbnails: { icon: 'file_image', color: '#ec4899' },
     };
 
     const iconInfo = iconMap[layout] || { icon: 'crown', color: '#38bdf8' };
 
-    const snapshotTabs: ExplorerTab[] = tabs.map((t) => ({
-      ...t,
-      history: [...t.history],
-    }));
+    // Tabs carry their split panels (which folder is in which panel, with history and pane
+    // tabs), so the split configuration is saved whether or not split view is showing.
+    const snapshotTabs: ExplorerTab[] = tabs.map(cloneWorkflowTab);
 
     const newWf: Workflow = {
       id: `wf-${Date.now()}`,
@@ -2116,8 +2317,8 @@ export const useExplorerStore = create<ExplorerState>((set, get) => ({
       iconColor: iconInfo.color,
       tabs: snapshotTabs,
       activeTabId,
-      layout,
-      rightPanePath: layout === 'dualpane' ? rightPanePath : undefined,
+      layout: folderLayout,
+      splitView,
       sortBy,
       sortAsc,
       showInspector,
@@ -2170,7 +2371,7 @@ export const useExplorerStore = create<ExplorerState>((set, get) => ({
   loadWorkflow: async (wf: Workflow) => {
     const restoredTabs: ExplorerTab[] =
       Array.isArray(wf.tabs) && wf.tabs.length > 0
-        ? wf.tabs.map((t) => ({ ...t, history: Array.isArray(t.history) ? [...t.history] : [t.path] }))
+        ? wf.tabs.map(cloneWorkflowTab)
         : [
             {
               id: `tab-${Date.now()}`,
@@ -2189,7 +2390,10 @@ export const useExplorerStore = create<ExplorerState>((set, get) => ({
     // A folder's saved style beats the workflow's layout, as in normal navigation. Applied
     // here too because navigateTo skips restore when the workflow opens the folder on screen.
     const savedView = get().folderViews[folderViewKey(activeTab.path)];
-    const nextLayout = savedView?.layout || wf.layout || get().layout;
+    // Split view comes from the workflow only; a folder's saved style never sets it.
+    const wfView = splitLayoutMode(wf.layout as LayoutMode);
+    const nextLayout = savedView?.layout || wfView.layout || get().layout;
+    const nextSplitView = wf.splitView ?? wfView.splitView ?? false;
     const nextThumbGridSize = savedView?.thumbSize ?? savedThumbGridSize();
     const nextSortBy = savedView?.sortBy ?? wf.sortBy ?? get().sortBy;
     const nextSortAsc = savedView?.sortBy
@@ -2216,6 +2420,7 @@ export const useExplorerStore = create<ExplorerState>((set, get) => ({
       tabs: restoredTabs,
       activeTabId: restoredActiveId,
       layout: nextLayout,
+      splitView: nextSplitView,
       thumbGridSize: nextThumbGridSize,
       sortBy: nextSortBy,
       sortAsc: nextSortAsc,
@@ -2223,30 +2428,25 @@ export const useExplorerStore = create<ExplorerState>((set, get) => ({
       showHiddenFiles: nextShowHidden,
       statusMessage: `Loaded workflow "${wf.label}" (${restoredTabs.length} tab${
         restoredTabs.length === 1 ? '' : 's'
-      }, ${nextLayout} layout)`,
+      }, ${nextSplitView ? 'split' : nextLayout} layout)`,
     });
 
     persistSession({
       tabs: restoredTabs,
       activeTabId: restoredActiveId,
       layout: nextLayout,
+      splitView: nextSplitView,
       sortBy: nextSortBy,
       sortAsc: nextSortAsc,
       showInspector: nextShowInspector,
       showHiddenFiles: nextShowHidden,
-      rightPanePath: wf.rightPanePath,
     });
 
     await get().navigateTo(activeTab.path, false);
     // In split view the panels are what's on screen. Tabs saved with panels get them back; a
     // tab without any starts both panels at the workflow's path (activeTab.path).
-    if (nextLayout === 'split') {
+    if (nextSplitView) {
       await get().initSplitPanels();
-    }
-    // Not tied to nextLayout: a saved folder style may have replaced the workflow's dual-pane
-    // layout, and the right pane should still match the session saved above.
-    if (wf.rightPanePath) {
-      await get().navigateRightPane(wf.rightPanePath);
     }
   },
   unpinWorkspace: (id: string) => {
@@ -2273,7 +2473,6 @@ export const useExplorerStore = create<ExplorerState>((set, get) => ({
   loadPinnedWorkspace: async (pin: PinnedWorkspace) => {
     await get().loadWorkflow(pin);
   },
-  setActiveTagFilter: (activeTagFilter) => set({ activeTagFilter }),
   toggleSidebar: () => {
     const next = !get().showSidebar;
     set({ showSidebar: next });
@@ -2295,7 +2494,6 @@ export const useExplorerStore = create<ExplorerState>((set, get) => ({
     persistSession({ showHiddenFiles: next });
   },
   setDeletePermanently: (deletePermanently) => set({ deletePermanently }),
-  setActivePane: (activePane) => set({ activePane }),
 
   addTagToPath: (path, tag) => {
     const clean = tag.trim().replace(/^#/, '').toLowerCase();
@@ -2354,6 +2552,13 @@ export const useExplorerStore = create<ExplorerState>((set, get) => ({
   },
 
   openPromptModal: (config) => {
+    if (config.kind === 'rename') {
+      const path = config.targetPath || config.subtitle || '';
+      if (path) {
+        set({ inlineRename: { path, name: config.defaultValue, isDirectory: !!config.isDirectory }, contextMenu: null });
+        return;
+      }
+    }
     set({ promptModal: config, contextMenu: null });
   },
 
@@ -2385,8 +2590,11 @@ export const useExplorerStore = create<ExplorerState>((set, get) => ({
   },
 
   requestDeleteSelected: (forcePermanent?: boolean) => {
-    const { selectedPaths, selectedPath, deletePermanently } = get();
-    const targets = selectedPaths.length > 0 ? selectedPaths : selectedPath ? [selectedPath] : [];
+    const s = get();
+    const { deletePermanently } = s;
+    // In the split layout the active pane's selection is the one that counts; the details-view
+    // selection can be stale. Resolve here so every caller (Del key, ribbon, context menu) agrees.
+    const targets = effectiveTargets(s);
     if (targets.length === 0) return;
     set({
       pendingDeletePath: targets[0],
@@ -2421,6 +2629,19 @@ export const useExplorerStore = create<ExplorerState>((set, get) => ({
       selectedPath: null,
       selectedPaths: [],
     });
+    // Drop the deleted paths from any split pane selection so nothing stale is left behind.
+    const deleted = new Set(targets);
+    set({
+      tabs: get().tabs.map((t) => {
+        if (!t.splitPanels) return t;
+        const prune = (p: SplitPanelState): SplitPanelState => {
+          if (!p.selectedPaths.some((x) => deleted.has(x)) && !(p.selectedPath && deleted.has(p.selectedPath))) return p;
+          const kept = p.selectedPaths.filter((x) => !deleted.has(x));
+          return { ...p, selectedPaths: kept, selectedPath: kept[0] ?? null };
+        };
+        return { ...t, splitPanels: [prune(t.splitPanels[0]), prune(t.splitPanels[1])] };
+      }),
+    });
     await get().refresh();
   },
 
@@ -2436,22 +2657,6 @@ export const useExplorerStore = create<ExplorerState>((set, get) => ({
       await fsService.deleteItem(p, deletePermanently);
     }
     set({ statusMessage: `Deleted ${targets.length} item(s)`, selectedPath: null, selectedPaths: [] });
-    await get().refresh();
-  },
-
-  copySelectedToOtherPane: async () => {
-    const { selectedPaths, selectedPath, rightPanePath } = get();
-    const targets = selectedPaths.length > 0 ? selectedPaths : selectedPath ? [selectedPath] : [];
-    if (targets.length === 0 || !rightPanePath) return;
-    await copyItemsTo(targets, rightPanePath, `Copied ${targets.length} item(s) to ${rightPanePath}`);
-    await get().refresh();
-  },
-
-  moveSelectedToOtherPane: async () => {
-    const { selectedPaths, selectedPath, rightPanePath } = get();
-    const targets = selectedPaths.length > 0 ? selectedPaths : selectedPath ? [selectedPath] : [];
-    if (targets.length === 0 || !rightPanePath) return;
-    await moveItemsTo(targets, rightPanePath, `Moved ${targets.length} item(s) to ${rightPanePath}`);
     await get().refresh();
   },
 
@@ -2569,8 +2774,8 @@ export const useExplorerStore = create<ExplorerState>((set, get) => ({
   },
 
   compressSelectedToZip: async () => {
-    const { selectedPaths, selectedPath, undoStack } = get();
-    const targets = selectedPaths.length > 0 ? selectedPaths : selectedPath ? [selectedPath] : [];
+    const { undoStack } = get();
+    const targets = effectiveTargets(get());
     if (targets.length === 0) return;
     set({ isLoading: true });
     try {
@@ -2610,3 +2815,11 @@ export const useExplorerStore = create<ExplorerState>((set, get) => ({
     }
   },
 }));
+
+// Column visibility/width changes made by the user are remembered for the folder on screen.
+setColumnsChangeHandler(() => {
+  const { currentPath, folderViews } = useExplorerStore.getState();
+  if (currentPath) {
+    useExplorerStore.setState({ folderViews: persistFolderView(folderViews, currentPath, { columns: getColumns() }) });
+  }
+});

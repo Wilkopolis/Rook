@@ -39,7 +39,7 @@ export class ErrorBoundary extends React.Component<{ children: React.ReactNode }
     const { error } = this.state;
     if (!error) return this.props.children;
     return (
-      <div className="h-screen w-screen flex items-center justify-center bg-[#0b0f19] text-slate-200 p-6">
+      <div className="h-screen w-screen flex items-center justify-center bg-[var(--background)] text-[var(--foreground)] p-6">
         <div className="max-w-lg w-full space-y-4 rounded-xl border border-red-500/40 bg-red-950/20 p-5 text-xs">
           <h1 className="text-sm font-semibold text-red-300">Rook hit an unexpected error</h1>
           <p className="opacity-80">
@@ -49,10 +49,10 @@ export class ErrorBoundary extends React.Component<{ children: React.ReactNode }
             {error.message}
           </pre>
           <div className="flex gap-2 justify-end">
-            <button onClick={this.openLogs} className="h-8 px-3 rounded-md border border-white/20 hover:bg-white/10 cursor-pointer">
+            <button onClick={this.openLogs} className="h-8 px-3 rounded-md border border-[var(--foreground)]/20 hover:bg-[var(--foreground)]/10 cursor-pointer">
               Open log folder
             </button>
-            <button onClick={this.reset} className="h-8 px-3 rounded-md border border-white/20 hover:bg-white/10 cursor-pointer">
+            <button onClick={this.reset} className="h-8 px-3 rounded-md border border-[var(--foreground)]/20 hover:bg-[var(--foreground)]/10 cursor-pointer">
               Try again
             </button>
             <button onClick={this.reload} className="h-8 px-3 rounded-md bg-[var(--primary)] text-[var(--primary-foreground)] hover:opacity-90 cursor-pointer">

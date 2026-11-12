@@ -220,11 +220,13 @@ function localFsBridgePlugin(): Plugin {
                 const fullPath = path.join(targetPath, d.name);
                 let sizeBytes = 0;
                 let modifiedMs = Date.now();
+                let createdMs = modifiedMs;
                 let isDirectory = d.isDirectory();
                 try {
                   const stat = await fs.stat(fullPath);
                   sizeBytes = stat.size;
                   modifiedMs = stat.mtimeMs;
+                  createdMs = stat.birthtimeMs;
                   isDirectory = stat.isDirectory();
                 } catch {}
                 const ext = isDirectory ? 'folder' : path.extname(d.name).replace(/^\./, '').toLowerCase();
@@ -234,6 +236,7 @@ function localFsBridgePlugin(): Plugin {
                   isDirectory,
                   sizeBytes,
                   modifiedMs,
+                  createdMs,
                   extension: ext,
                 };
               })

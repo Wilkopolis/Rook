@@ -24,12 +24,12 @@ export const App: React.FC = () => {
     items,
     currentPath,
     layout,
+    splitView,
     sortBy,
     sortAsc,
     filterQuery,
     deepSearch,
     deepSearchResults,
-    activeTagFilter,
     selectedPath,
     selectedPaths,
     clipboard,
@@ -86,7 +86,23 @@ export const App: React.FC = () => {
     dropUrlToDir,
     hiddenDrives,
     unhideDrive,
+    themePreference,
+    setThemePreference,
   } = useExplorerStore();
+
+  // Apply the theme preference; in 'system' mode follow prefers-color-scheme live.
+  useEffect(() => {
+    const root = document.documentElement;
+    if (themePreference !== 'system') {
+      root.classList.toggle('dark', themePreference === 'dark');
+      return;
+    }
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    const apply = () => root.classList.toggle('dark', mq.matches);
+    apply();
+    mq.addEventListener('change', apply);
+    return () => mq.removeEventListener('change', apply);
+  }, [themePreference]);
 
   const [maxCacheMbInput, setMaxCacheMbInput] = useState<string>('250');
   const [promptInput, setPromptInput] = useState<string>('');
@@ -137,9 +153,6 @@ export const App: React.FC = () => {
           (f.tags || []).some((t) => t.toLowerCase().includes(q))
       );
     }
-    if (layout === 'faceted' && activeTagFilter !== 'all') {
-      list = list.filter((f) => (f.tags || []).includes(activeTagFilter));
-    }
 
     list.sort((a, b) => {
       if (a.isDirectory && !b.isDirectory) return -1;
@@ -147,12 +160,13 @@ export const App: React.FC = () => {
       let cmp = 0;
       if (sortBy === 'size') cmp = a.sizeBytes - b.sizeBytes;
       else if (sortBy === 'modified') cmp = a.modifiedMs - b.modifiedMs;
+      else if (sortBy === 'created') cmp = (a.createdMs ?? a.modifiedMs) - (b.createdMs ?? b.modifiedMs);
       else if (sortBy === 'extension') cmp = naturalCompare(a.extension, b.extension) || naturalCompare(a.name, b.name);
       else cmp = naturalCompare(a.name, b.name);
       return sortAsc ? cmp : -cmp;
     });
     return list;
-  }, [items, deepSearch, deepSearchResults, showHiddenFiles, filterQuery, layout, activeTagFilter, sortBy, sortAsc]);
+  }, [items, deepSearch, deepSearchResults, showHiddenFiles, filterQuery, layout, sortBy, sortAsc]);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -248,7 +262,7 @@ export const App: React.FC = () => {
     const splitApi = () => useExplorerStore.getState();
     const splitActive = () => {
       const s = splitApi();
-      if (s.layout !== 'split') return null;
+      if (!s.splitView) return null;
       const tab = s.tabs.find((t) => t.id === s.activeTabId);
       const index = tab?.activeSplitPanel ?? 0;
       const panel = tab?.splitPanels?.[index];
@@ -266,10 +280,7 @@ export const App: React.FC = () => {
       if (e.altKey) {
         if (e.key === '1') { e.preventDefault(); setLayout('workspace'); }
         if (e.key === '2') { e.preventDefault(); setLayout('thumbnails'); }
-        if (e.key === '3') { e.preventDefault(); setLayout('miller'); }
-        if (e.key === '4') { e.preventDefault(); setLayout('dualpane'); }
-        if (e.key === '5') { e.preventDefault(); setLayout('split'); }
-        if (e.key === '6') { e.preventDefault(); setLayout('faceted'); }
+        if (e.key === '5') { e.preventDefault(); useExplorerStore.getState().toggleSplitView(); }
         if (e.key === '7') { e.preventDefault(); setLayout('command'); }
         // In the split layout, history navigation targets the active panel.
         if (e.key === 'ArrowLeft') { e.preventDefault(); if (!splitApi().splitNavigateHistory('back')) goBack(); }
@@ -365,7 +376,7 @@ export const App: React.FC = () => {
           else if (e.key === 'Backspace') { e.preventDefault(); api.splitNavigateHistory('up'); }
         } else if (
           (e.key === 'ArrowDown' ||
-            ((layout === 'thumbnails' || layout === 'faceted') && e.key === 'ArrowRight')) &&
+            (layout === 'thumbnails' && e.key === 'ArrowRight')) &&
           visibleItems.length > 0
         ) {
           e.preventDefault();
@@ -377,7 +388,7 @@ export const App: React.FC = () => {
           });
         } else if (
           (e.key === 'ArrowUp' ||
-            ((layout === 'thumbnails' || layout === 'faceted') && e.key === 'ArrowLeft')) &&
+            (layout === 'thumbnails' && e.key === 'ArrowLeft')) &&
           visibleItems.length > 0
         ) {
           e.preventDefault();
@@ -551,9 +562,10 @@ export const App: React.FC = () => {
         <div className="flex-1 flex overflow-hidden">
           <SidebarPane />
           <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-            <TabBar />
+            {/* In split view each pane renders its own tab strip instead. */}
+            {!splitView && <TabBar />}
             <div className="flex-1 flex overflow-hidden">
-          <div className="flex-1 flex overflow-hidden relative z-10 bg-[var(--center-bg)] shadow-[0_0_28px_rgba(0,0,0,0.6)] ring-1 ring-white/[0.04]">
+          <div className="flex-1 flex overflow-hidden relative z-10 bg-[var(--center-bg)] shadow-[0_0_28px_rgba(0,0,0,0.6)] ring-1 ring-[var(--foreground)]/[0.04]">
             <LayoutsView />
           </div>
               <InspectorPane />
@@ -585,7 +597,7 @@ export const App: React.FC = () => {
                 </div>
                 <button
                   onClick={toggleOptionsModal}
-                  className="w-7 h-7 rounded-md hover:bg-white/[0.08] flex items-center justify-center cursor-pointer opacity-70 hover:opacity-100 transition-colors"
+                  className="w-7 h-7 rounded-md hover:bg-[var(--foreground)]/[0.08] flex items-center justify-center cursor-pointer opacity-70 hover:opacity-100 transition-colors"
                 >
                   <KenneyIcon name="cross" size={13} />
                 </button>
@@ -607,7 +619,7 @@ export const App: React.FC = () => {
                     className={`shrink-0 md:w-full text-left px-3 h-8 rounded-md font-medium whitespace-nowrap truncate cursor-pointer transition-colors ${
                       settingsCategory === id
                         ? 'bg-[var(--primary)] text-[var(--primary-foreground)]'
-                        : 'text-[var(--foreground)] hover:bg-white/[0.08]'
+                        : 'text-[var(--foreground)] hover:bg-[var(--foreground)]/[0.08]'
                     }`}
                   >
                     {label}
@@ -619,14 +631,18 @@ export const App: React.FC = () => {
                 <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 rounded-lg bg-[var(--background)] border border-[var(--border)]">
                   <div>
                     <div className="font-medium text-[var(--foreground)]">Color Theme</div>
-                    <div className="text-[var(--muted-foreground)]">Switch between Dark and Light mode</div>
+                    <div className="text-[var(--muted-foreground)]">Light, Dark, or match your system</div>
                   </div>
-                  <button
-                    onClick={() => document.documentElement.classList.toggle('dark')}
-                    className="h-8 px-3 rounded-md bg-[var(--card)] border border-[var(--border)] hover:border-[var(--primary)] font-medium text-xs cursor-pointer flex items-center justify-center transition-colors"
+                  <select
+                    value={themePreference}
+                    onChange={(e) => setThemePreference(e.target.value as 'light' | 'dark' | 'system')}
+                    aria-label="Color theme"
+                    className="h-8 px-2 rounded-md bg-[var(--card)] border border-[var(--border)] hover:border-[var(--primary)] font-medium text-xs cursor-pointer transition-colors"
                   >
-                    Toggle Theme
-                  </button>
+                    <option value="system">Match system</option>
+                    <option value="light">Light</option>
+                    <option value="dark">Dark</option>
+                  </select>
                 </div>
 
                 </>)}
@@ -904,7 +920,7 @@ export const App: React.FC = () => {
                 </div>
                 <button
                   onClick={closePromptModal}
-                  className="w-7 h-7 rounded-md hover:bg-white/[0.08] flex items-center justify-center cursor-pointer opacity-70 hover:opacity-100 transition-colors"
+                  className="w-7 h-7 rounded-md hover:bg-[var(--foreground)]/[0.08] flex items-center justify-center cursor-pointer opacity-70 hover:opacity-100 transition-colors"
                 >
                   <KenneyIcon name="cross" size={13} />
                 </button>

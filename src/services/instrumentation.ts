@@ -9,7 +9,6 @@ const SILENT_STORE_ACTIONS = new Set([
   'refreshLogSettings',
   'setFilterQuery',
   'runDeepSearch',
-  'setActivePane',
   'closeContextMenu',
 ]);
 

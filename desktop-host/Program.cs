@@ -1638,6 +1638,37 @@ public partial class Program
                 using var doc = await JsonDocument.ParseAsync(ctx.Request.Body);
                 var root = doc.RootElement;
 
+                if (!IsFileMutatingAction(action)) return await DispatchFsAction(action, ctx, root);
+
+                // File-mutating actions are recorded in the file action log (see Program.FileActionAudit.cs).
+                IResult result;
+                try
+                {
+                    result = await DispatchFsAction(action, ctx, root);
+                }
+                catch (Exception ex)
+                {
+                    LogFileAction(action, root, null, ex);
+                    throw;
+                }
+                LogFileAction(action, root, result);
+                return result;
+            }
+            catch (OperationCanceledException)
+            {
+                // A transfer cancelled from the UI, or the page dropped the request.
+                return Results.Json(new { error = "Cancelled" }, statusCode: 499);
+            }
+            catch (Exception ex)
+            {
+                RookLog.Error($"api/{action}", $"Action '{action}' failed: {ex.Message}", ex);
+                return Results.Json(new { error = ex.Message }, statusCode: 500);
+            }
+        });
+
+        async Task<IResult> DispatchFsAction(string action, HttpContext ctx, JsonElement root)
+        {
+            {
                 // Copy/move progress jobs; see Program.Transfers.cs.
                 if (TryHandleTransferAction(action, root) is { } transferResult)
                 {
@@ -1672,6 +1703,34 @@ public partial class Program
                         : "bottomRight";
                     MainWindow?.ResizeWindow(dir);
                     return Results.Json(new { ok = true });
+                }
+                // Native OS drag-out: starts a Win32 DoDragDrop with a FileDrop (CF_HDROP)
+                // data object so other apps (Explorer, Discord, browsers...) accept the drop.
+                // Must be called while the mouse button is still held (from the page's dragstart).
+                if (action == "startDrag")
+                {
+                    if (!root.TryGetProperty("paths", out var pathsProp) || pathsProp.ValueKind != JsonValueKind.Array)
+                    {
+                        return Results.Json(new { error = "paths must be an array of strings" }, statusCode: 400);
+                    }
+                    var dragPaths = pathsProp.EnumerateArray()
+                        .Where(p => p.ValueKind == JsonValueKind.String)
+                        .Select(p => p.GetString())
+                        .Where(p => !string.IsNullOrWhiteSpace(p))
+                        .Select(p => Path.GetFullPath(p!))
+                        .Where(p => File.Exists(p) || Directory.Exists(p))
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .ToArray();
+                    if (dragPaths.Length == 0)
+                    {
+                        return Results.Json(new { error = "No existing files or folders to drag" }, statusCode: 400);
+                    }
+                    if (MainWindow == null)
+                    {
+                        return Results.Json(new { error = "Native drag requires the desktop window" }, statusCode: 409);
+                    }
+                    MainWindow.StartFileDrag(dragPaths);
+                    return Results.Json(new { ok = true, started = true, count = dragPaths.Length });
                 }
                 if (action == "winMinimize")
                 {
@@ -1854,6 +1913,8 @@ public partial class Program
                             try { sizeBytes = fi.Length; } catch { }
                         }
                         long modifiedMs = new DateTimeOffset(entry.LastWriteTimeUtc).ToUnixTimeMilliseconds();
+                        long createdMs = modifiedMs;
+                        try { createdMs = new DateTimeOffset(entry.CreationTimeUtc).ToUnixTimeMilliseconds(); } catch { }
                         string ext = isDir ? "folder" : entry.Extension.TrimStart('.').ToLowerInvariant();
 
                         items.Add(new
@@ -1863,6 +1924,7 @@ public partial class Program
                             isDirectory = isDir,
                             sizeBytes,
                             modifiedMs,
+                            createdMs,
                             extension = ext
                         });
                     }
@@ -1918,6 +1980,8 @@ public partial class Program
                             }
                             long modifiedMs = 0;
                             try { modifiedMs = new DateTimeOffset(entry.LastWriteTimeUtc).ToUnixTimeMilliseconds(); } catch { }
+                            long createdMs = modifiedMs;
+                            try { createdMs = new DateTimeOffset(entry.CreationTimeUtc).ToUnixTimeMilliseconds(); } catch { }
                             string ext = isDir ? "folder" : entry.Extension.TrimStart('.').ToLowerInvariant();
 
                             items.Add(new
@@ -1927,6 +1991,7 @@ public partial class Program
                                 isDirectory = isDir,
                                 sizeBytes,
                                 modifiedMs,
+                                createdMs,
                                 extension = ext
                             });
 
@@ -2485,6 +2550,12 @@ public partial class Program
                     return Results.Json(new { enabled = RookLog.Enabled, logDir = RookLog.LogDir, logFile = RookLog.LogFile });
                 }
 
+                if (action == "openFileActionLog")
+                {
+                    FileActionLog.Open();
+                    return Results.Json(new { ok = true, path = FileActionLog.LogFile });
+                }
+
                 if (action == "openLogFolder")
                 {
                     RookLog.OpenLogFolder();
@@ -2493,17 +2564,7 @@ public partial class Program
 
                 return Results.NotFound(new { error = "Unknown action" });
             }
-            catch (OperationCanceledException)
-            {
-                // A transfer cancelled from the UI, or the page dropped the request.
-                return Results.Json(new { error = "Cancelled" }, statusCode: 499);
-            }
-            catch (Exception ex)
-            {
-                RookLog.Error($"api/{action}", $"Action '{action}' failed: {ex.Message}", ex);
-                return Results.Json(new { error = ex.Message }, statusCode: 500);
-            }
-        });
+        }
 
         string BuildHydratedIndexHtml(string rawHtml)
         {

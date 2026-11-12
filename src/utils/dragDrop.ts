@@ -1,3 +1,4 @@
+import { fsService } from '../services/fsService';
 import React from 'react';
 import { useExplorerStore } from '../store/useExplorerStore';
 
@@ -25,6 +26,9 @@ export const hasDragData = hasFileDragData;
 export function hasUrlDragData(dataTransfer: DataTransfer | null): boolean {
   if (!dataTransfer) return false;
   const types = Array.from(dataTransfer.types || []);
+  // Rook's native drag-out (CF_HDROP) also carries file:// text/uri-list for browsers;
+  // a real file payload wins so in-app pane/folder drops keep move-by-default (Ctrl = copy).
+  if (types.includes('Files') || types.includes('application/x-rook-paths')) return false;
   return types.includes('text/uri-list') || types.includes('text/x-moz-url');
 }
 
@@ -353,3 +357,24 @@ export async function handleFileDropToDir(
 }
 
 export const handleDropToDir = handleFileDropToDir;
+
+/**
+ * Hand a file-item drag over to the desktop host as a native OS drag (CF_HDROP),
+ * so other apps (Explorer, Discord, browsers...) accept the drop for any file type.
+ * Returns true if the HTML drag was cancelled in favor of the native drag;
+ * false outside the WebView2 host (e.g. `npm run dev`), where the caller should
+ * fall back to an HTML5 dataTransfer drag.
+ */
+export function startNativeFileDrag(e: React.DragEvent, paths: string[]): boolean {
+  const webview = (window as any).chrome?.webview;
+  if (!webview || paths.length === 0) return false;
+  // Cancel the HTML drag synchronously; the host runs DoDragDrop while the button is still held.
+  e.preventDefault();
+  void fsService.startNativeDrag(paths).then((res) => {
+    // Older hosts without the `startDrag` API action: use the WebView2 message channel.
+    if (!res && typeof webview.postMessage === 'function') {
+      webview.postMessage({ type: 'startDrag', paths });
+    }
+  });
+  return true;
+}

@@ -500,7 +500,7 @@ export const TerminalDrawer: React.FC = () => {
   return (
     <div
       style={{ height: `${drawerHeight}px` }}
-      className="border-t border-[var(--border)] bg-[#0d1017] p-2.5 font-mono text-xs flex flex-col justify-between shrink-0 relative select-text"
+      className="border-t border-[var(--border)] bg-[var(--center-bg)] p-2.5 font-mono text-xs flex flex-col justify-between shrink-0 relative select-text"
       onClick={(e) => {
         // Focus input if user clicks empty background
         if (e.target === e.currentTarget || (e.target as HTMLElement).tagName === 'DIV') {
@@ -547,7 +547,7 @@ export const TerminalDrawer: React.FC = () => {
             <button
               type="button"
               onClick={handleClear}
-              className="h-7 px-2.5 rounded-md hover:bg-white/[0.08] text-[var(--muted-foreground)] hover:text-[var(--foreground)] text-xs cursor-pointer flex items-center justify-center transition-colors"
+              className="h-7 px-2.5 rounded-md hover:bg-[var(--foreground)]/[0.08] text-[var(--muted-foreground)] hover:text-[var(--foreground)] text-xs cursor-pointer flex items-center justify-center transition-colors"
               title="Clear terminal output (cls)"
             >
               Clear
@@ -557,7 +557,7 @@ export const TerminalDrawer: React.FC = () => {
           <button
             type="button"
             onClick={() => fsService.openPowershell(currentPath)}
-            className="h-7 px-2.5 rounded-md hover:bg-white/[0.08] text-[var(--muted-foreground)] hover:text-[var(--foreground)] text-xs cursor-pointer flex items-center gap-1.5 transition-colors"
+            className="h-7 px-2.5 rounded-md hover:bg-[var(--foreground)]/[0.08] text-[var(--muted-foreground)] hover:text-[var(--foreground)] text-xs cursor-pointer flex items-center gap-1.5 transition-colors"
             title="Launch external PowerShell window in current path (Ctrl+T)"
           >
             <KenneyIcon name="campfire" size={13} />
@@ -567,7 +567,7 @@ export const TerminalDrawer: React.FC = () => {
           <button
             type="button"
             onClick={toggleTerminal}
-            className="w-7 h-7 rounded-md hover:bg-white/[0.08] opacity-70 hover:opacity-100 cursor-pointer flex items-center justify-center text-[var(--foreground)] transition-colors"
+            className="w-7 h-7 rounded-md hover:bg-[var(--foreground)]/[0.08] opacity-70 hover:opacity-100 cursor-pointer flex items-center justify-center text-[var(--foreground)] transition-colors"
             title="Close Terminal (`)"
           >
             <KenneyIcon name="cross" size={13} />
@@ -580,12 +580,12 @@ export const TerminalDrawer: React.FC = () => {
         {entries.map((entry) => (
           <div key={entry.id} className="space-y-0.5">
             {entry.command && (
-              <div className="flex items-start gap-1.5 text-slate-300">
+              <div className="flex items-start gap-1.5 text-[var(--foreground)]">
                 <span className="text-emerald-400 select-none">{entry.cwd}</span>
                 {entry.gitBranch && (
                   <span className="text-sky-400 select-none">({entry.gitBranch})</span>
                 )}
-                <span className="text-slate-500 select-none">&gt;</span>
+                <span className="text-[var(--muted-foreground)] select-none">&gt;</span>
                 <span className="font-semibold text-[var(--foreground)]/85">{entry.command}</span>
               </div>
             )}
@@ -597,7 +597,7 @@ export const TerminalDrawer: React.FC = () => {
             )}
 
             {entry.output && (
-              <pre className="font-mono text-[11px] text-slate-200 whitespace-pre-wrap pl-2 border-l border-slate-700/50 break-words leading-tight">
+              <pre className="font-mono text-[11px] text-[var(--foreground)] whitespace-pre-wrap pl-2 border-l border-[var(--border)] break-words leading-tight">
                 {entry.output}
               </pre>
             )}
@@ -638,7 +638,7 @@ export const TerminalDrawer: React.FC = () => {
                 className={`px-1.5 py-0.5 rounded text-[11px] font-mono whitespace-nowrap cursor-pointer transition-colors ${
                   idx === autocompleteSession.index
                     ? 'bg-sky-500/30 text-sky-200 border border-sky-400/50 font-semibold shadow-sm'
-                    : 'hover:bg-white/[0.08] text-slate-400'
+                    : 'hover:bg-[var(--foreground)]/[0.08] text-[var(--muted-foreground)]'
                 }`}
                 title="Click to select this match"
               >
@@ -654,7 +654,7 @@ export const TerminalDrawer: React.FC = () => {
         <span className="text-emerald-400 select-none text-[11px] truncate max-w-[220px]">
           {currentPath.split(/[\\/]/).filter(Boolean).pop() || currentPath}
         </span>
-        <span className="text-slate-500 select-none">&gt;</span>
+        <span className="text-[var(--muted-foreground)] select-none">&gt;</span>
         <input
           ref={inputRef}
           type="text"

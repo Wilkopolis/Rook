@@ -14,7 +14,7 @@ export const InspectorPane: React.FC = () => {
     preview,
     openPromptModal,
     setLayout,
-    setActiveTagFilter,
+    setFilterQuery,
     navigateTo,
   } = useExplorerStore();
 
@@ -153,8 +153,7 @@ export const InspectorPane: React.FC = () => {
               <span
                 key={t}
                 onClick={() => {
-                  setLayout('faceted', { saveForFolder: false });
-                  setActiveTagFilter(t);
+                  setFilterQuery(t);
                 }}
                 className="px-2 py-0.5 rounded-full text-xs bg-[var(--card)] border border-[var(--border)] text-[var(--foreground)] cursor-pointer hover:border-[var(--primary)]"
               >

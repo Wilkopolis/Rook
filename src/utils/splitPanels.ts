@@ -15,6 +15,7 @@ export const visibleSplitItems = (
     let cmp = 0;
     if (sortBy === 'size') cmp = a.sizeBytes - b.sizeBytes;
     else if (sortBy === 'modified') cmp = a.modifiedMs - b.modifiedMs;
+    else if (sortBy === 'created') cmp = (a.createdMs ?? a.modifiedMs) - (b.createdMs ?? b.modifiedMs);
     else if (sortBy === 'extension')
       cmp = naturalCompare(a.extension, b.extension) || naturalCompare(a.name, b.name);
     else cmp = naturalCompare(a.name, b.name);

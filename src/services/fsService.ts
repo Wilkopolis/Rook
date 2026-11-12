@@ -6,6 +6,7 @@ import {
   LogSettings,
   MediaInfo,
   SshAddRequest,
+  StartDragResult,
   SshConnectResult,
   SshConnection,
   SshDrive,
@@ -76,6 +77,9 @@ export const fsService = {
   async openLogFolder(): Promise<{ ok: boolean }> {
     return postApi('openLogFolder');
   },
+  async openFileActionLog(): Promise<{ ok: boolean; path: string }> {
+    return postApi('openFileActionLog');
+  },
   async getSystemInfo(): Promise<SystemInfo> {
     return postApi<SystemInfo>('info');
   },
@@ -90,6 +94,20 @@ export const fsService = {
     try {
       await postApi('winResize', { dir });
     } catch {}
+  },
+
+  /**
+   * Start a native Win32 file drag (CF_HDROP) so other apps accept the drop.
+   * Call from dragstart while the mouse button is still held. Desktop host only;
+   * resolves null if the host can't start it (dev server, no valid paths).
+   */
+  async startNativeDrag(paths: string[]): Promise<StartDragResult | null> {
+    if (paths.length === 0) return null;
+    try {
+      return await postApi<StartDragResult>('startDrag', { paths });
+    } catch {
+      return null;
+    }
   },
 
   async winMinimize(): Promise<void> {

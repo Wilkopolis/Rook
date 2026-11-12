@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { useExplorerStore } from '../store/useExplorerStore';
-import { LayoutMode } from '../types/fs';
+import { effectiveSelection, useExplorerStore } from '../store/useExplorerStore';
+import { FolderLayout } from '../types/fs';
 import { fsService } from '../services/fsService';
 import { KenneyIcon } from './KenneyIcon';
 import { handleFileDropToDir, hasFileDragData, setAppropriateDropEffect } from '../utils/dragDrop';
@@ -8,9 +8,10 @@ import { buildSshPath, parseSshPath } from '../utils/sshPath';
 
 export const RibbonHeader: React.FC = () => {
   const {
-    currentPath,
+    currentPath: tabCurrentPath,
     gitBranch,
     layout,
+    splitView,
     filterQuery,
     deepSearch,
     isSearching,
@@ -18,14 +19,16 @@ export const RibbonHeader: React.FC = () => {
     showInspector,
     showTerminal,
     showOptionsModal,
-    selectedPath,
-    items,
-    goBack,
-    goForward,
-    goUp,
-    refresh,
-    navigateTo,
+    items: tabItems,
+    goBack: tabGoBack,
+    goForward: tabGoForward,
+    goUp: tabGoUp,
+    refresh: tabRefresh,
+    navigateSidebar,
+    navigateSplitPanel,
+    splitNavigateHistory,
     setLayout,
+    toggleSplitView,
     setFilterQuery,
     toggleDeepSearch,
     toggleSidebar,
@@ -34,13 +37,40 @@ export const RibbonHeader: React.FC = () => {
     toggleOptionsModal,
     openPromptModal,
     requestDeleteSelected,
-    copySelectedToOtherPane,
-    moveSelectedToOtherPane,
     dropEntriesToDir,
     dropUrlToDir,
     openPowershellCurrent,
     sshConnections,
   } = useExplorerStore();
+
+  // In split layout the top toolbar reflects and drives whichever pane is selected.
+  // Selectors must return primitives: a fresh object per call makes the store snapshot
+  // unstable and React bails out with "Maximum update depth exceeded" (#185).
+  const splitIndex = useExplorerStore((st) => {
+    if (!st.splitView) return null;
+    const tab = st.tabs.find((t) => t.id === st.activeTabId);
+    return tab?.splitPanels ? (tab.activeSplitPanel ?? 0) : null;
+  });
+  const splitPath = useExplorerStore((st) => {
+    if (!st.splitView) return null;
+    const tab = st.tabs.find((t) => t.id === st.activeTabId);
+    return tab?.splitPanels?.[tab.activeSplitPanel ?? 0]?.path ?? null;
+  });
+  const splitPanel =
+    splitIndex !== null && splitPath !== null ? { index: splitIndex, path: splitPath } : null;
+  // Rename/delete buttons act on the active pane's selection in split layout.
+  const selectedPath = useExplorerStore((st) => effectiveSelection(st).selectedPath);
+  const splitItems = useExplorerStore((st) => (splitIndex !== null ? st.splitPanelItems[splitIndex] : null));
+  const items = splitItems ?? tabItems;
+  const currentPath = splitPanel ? splitPanel.path : tabCurrentPath;
+  const goBack = () => { if (!splitNavigateHistory('back')) void tabGoBack(); };
+  const goForward = () => { if (!splitNavigateHistory('forward')) void tabGoForward(); };
+  const goUp = () => { if (!splitNavigateHistory('up')) void tabGoUp(); };
+  const navigateTo = (path: string) => void navigateSidebar(path);
+  const refresh = () => {
+    if (splitPanel) void navigateSplitPanel(splitPanel.index, splitPanel.path, false);
+    else void tabRefresh();
+  };
 
   const [editingPath, setEditingPath] = useState(false);
   const [pathInput, setPathInput] = useState(currentPath);
@@ -155,13 +185,14 @@ export const RibbonHeader: React.FC = () => {
     }
   };
 
-  const layouts: { id: LayoutMode; icon: string; tooltip: string }[] = [
+  // Split view is a global Rook display setting (store `splitView`), separate from the
+  // folder view; turning it off shows the folder view that was there before.
+  const splitActive = splitView;
+
+  // Per-folder view modes. Split view is deliberately not in this group.
+  const layouts: { id: FolderLayout; icon: string; tooltip: string }[] = [
     { id: 'workspace', icon: 'menuList', tooltip: 'Details' },
     { id: 'thumbnails', icon: 'menuGrid', tooltip: 'Thumbnails' },
-    { id: 'miller', icon: 'barsVertical', tooltip: 'Miller Columns' },
-    { id: 'dualpane', icon: 'scrollHorizontal', tooltip: 'Dual-Pane' },
-    { id: 'split', icon: 'columns', tooltip: 'Split Panels (two independent folders)' },
-    { id: 'faceted', icon: 'tag', tooltip: 'Faceted' },
     { id: 'command', icon: 'zoom', tooltip: 'Fuzzy' },
   ];
 
@@ -204,24 +235,6 @@ export const RibbonHeader: React.FC = () => {
           <div className="h-5 w-px bg-[var(--border)] mx-0.5 shrink-0" />
 
           <button
-            onClick={copySelectedToOtherPane}
-            disabled={!selectedPath}
-            title="Copy"
-            className="w-8 h-8 rounded-md bg-[var(--card)] border border-[var(--border)] hover:border-[var(--primary)] disabled:opacity-40 cursor-pointer flex items-center justify-center shrink-0 transition-colors"
-          >
-            <KenneyIcon name="export" size={16} />
-          </button>
-
-          <button
-            onClick={moveSelectedToOtherPane}
-            disabled={!selectedPath}
-            title="Move"
-            className="w-8 h-8 rounded-md bg-[var(--card)] border border-[var(--border)] hover:border-[var(--primary)] disabled:opacity-40 cursor-pointer flex items-center justify-center shrink-0 transition-colors"
-          >
-            <KenneyIcon name="import" size={16} />
-          </button>
-
-          <button
             onClick={handleRename}
             disabled={!selectedPath}
             title="Rename"
@@ -251,12 +264,12 @@ export const RibbonHeader: React.FC = () => {
           </button>
         </div>
 
-        {/* Right: 5-Layout Switcher + Sort + Dockable Panes + Options + Window Controls */}
+        {/* Right: Folder View Switcher + Split View + Dockable Panes + Options + Window Controls */}
         <div className="flex items-center gap-1.5 shrink-0">
-          {/* 5-Layout Switcher Pill */}
+          {/* Folder View Switcher Pill */}
           <div className="h-8 flex items-center bg-[var(--background)] p-0.5 rounded-md border border-[var(--border)] gap-0.5 shrink-0">
             {layouts.map((m) => {
-              const active = layout === m.id;
+              const active = !splitView && layout === m.id;
               return (
                 <button
                   key={m.id}
@@ -273,6 +286,22 @@ export const RibbonHeader: React.FC = () => {
               );
             })}
           </div>
+
+          {/* Split View: global display toggle, separate from the folder view group */}
+          <button
+            onClick={toggleSplitView}
+            title={splitActive ? 'Exit Split View' : 'Split View (two independent folders)'}
+            aria-pressed={splitActive}
+            className={`w-8 h-8 rounded-md border cursor-pointer flex items-center justify-center shrink-0 transition-colors ${
+              splitActive
+                ? 'bg-[var(--primary)]/25 border-[var(--primary)] text-[var(--primary)]'
+                : 'bg-[var(--card)] border-[var(--border)] opacity-80 hover:opacity-100 hover:border-[var(--primary)]'
+            }`}
+          >
+            <KenneyIcon name="columns" size={16} />
+          </button>
+
+          <div className="h-5 w-px bg-[var(--border)] mx-0.5 shrink-0" />
 
           {/* Dockable Pane Toggles + Options Button */}
           <div className="flex items-center gap-1 shrink-0">
@@ -320,6 +349,15 @@ export const RibbonHeader: React.FC = () => {
               }`}
             >
               <KenneyIcon name="gear" size={16} />
+            </button>
+            <button
+              onClick={() => {
+                fsService.openFileActionLog().catch(() => {});
+              }}
+              title="Open file action log"
+              className="w-8 h-8 rounded-md border cursor-pointer flex items-center justify-center shrink-0 transition-colors bg-[var(--card)] border-[var(--border)] opacity-80 hover:opacity-100 hover:border-[var(--primary)]"
+            >
+              <KenneyIcon name="article" size={16} />
             </button>
           </div>
 

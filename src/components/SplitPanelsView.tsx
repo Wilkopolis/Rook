@@ -1,11 +1,12 @@
+import { InlineRenameName } from './InlineRename';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useExplorerStore } from '../store/useExplorerStore';
 import { FsEntry, SplitPanelIndex, SplitPanelState } from '../types/fs';
-import { formatBytes, formatRelativeTime } from '../utils/format';
-import { KenneyIcon } from './KenneyIcon';
 import { FileThumbnail } from './FileThumbnail';
-import { handleFileDropToDir, hasFileDragData, setAppropriateDropEffect } from '../utils/dragDrop';
+import { FileColumnCells, FileColumnHeader, useFileColumns } from './FileColumns';
+import { TabStrip } from './TabStrip';
+import { handleFileDropToDir, hasFileDragData, setAppropriateDropEffect, startNativeFileDrag } from '../utils/dragDrop';
 import { visibleSplitItems } from '../utils/splitPanels';
 
 const ROW_HEIGHT = 28;
@@ -18,21 +19,33 @@ interface PanelProps {
 }
 
 const SplitPanel: React.FC<PanelProps> = ({ index, panel, items, error }) => {
-  const sortBy = useExplorerStore((s) => s.sortBy);
-  const sortAsc = useExplorerStore((s) => s.sortAsc);
+  const { widths: colWidths, visible: colVisible } = useFileColumns();
+  const nameWidth = colWidths.name;
+  // Natural width of the columns; below this the panel scrolls horizontally as one piece.
+  const contentMinWidth =
+    24 + 16 + (nameWidth || 120) +
+    (Object.keys(colVisible) as (keyof typeof colVisible)[]).reduce(
+      (sum, k) => sum + (colVisible[k] ? colWidths[k] : 0),
+      0,
+    );
+  const sortBy = useExplorerStore((s) => s.splitPanelSorts[index].sortBy);
+  const sortAsc = useExplorerStore((s) => s.splitPanelSorts[index].sortAsc);
+  const setSplitPanelSort = useExplorerStore((s) => s.setSplitPanelSort);
   const showHiddenFiles = useExplorerStore((s) => s.showHiddenFiles);
   const clipboard = useExplorerStore((s) => s.clipboard);
   const navigateSplitPanel = useExplorerStore((s) => s.navigateSplitPanel);
-  const splitPanelBack = useExplorerStore((s) => s.splitPanelBack);
-  const splitPanelForward = useExplorerStore((s) => s.splitPanelForward);
-  const splitPanelUp = useExplorerStore((s) => s.splitPanelUp);
   const selectSplitPanelEntry = useExplorerStore((s) => s.selectSplitPanelEntry);
   const setSplitPanelSelection = useExplorerStore((s) => s.setSplitPanelSelection);
   const openEntry = useExplorerStore((s) => s.openEntry);
+  const openSplitPanelContextMenu = useExplorerStore((s) => s.openSplitPanelContextMenu);
   const dropEntriesToDir = useExplorerStore((s) => s.dropEntriesToDir);
   const dropUrlToDir = useExplorerStore((s) => s.dropUrlToDir);
 
   const setActiveSplitPanel = useExplorerStore((s) => s.setActiveSplitPanel);
+  const addSplitPaneTab = useExplorerStore((s) => s.addSplitPaneTab);
+  const switchSplitPaneTab = useExplorerStore((s) => s.switchSplitPaneTab);
+  const closeSplitPaneTab = useExplorerStore((s) => s.closeSplitPaneTab);
+  const reorderSplitPaneTabs = useExplorerStore((s) => s.reorderSplitPaneTabs);
   const isActive = useExplorerStore(
     (s) => (s.tabs.find((t) => t.id === s.activeTabId)?.activeSplitPanel ?? 0) === index,
   );
@@ -101,12 +114,7 @@ const SplitPanel: React.FC<PanelProps> = ({ index, panel, items, error }) => {
     const paths = selectedSet.has(entry.path) && panel.selectedPaths.length > 0
       ? panel.selectedPaths
       : [entry.path];
-    const webview = (window as any).chrome?.webview;
-    if (webview && typeof webview.postMessage === 'function') {
-      webview.postMessage({ type: 'startDrag', paths });
-      e.preventDefault();
-      return;
-    }
+    if (startNativeFileDrag(e, paths)) return;
     e.dataTransfer.setData('application/x-rook-paths', JSON.stringify(paths));
     e.dataTransfer.setData('text/plain', paths.join('\n'));
     e.dataTransfer.effectAllowed = 'copyMove';
@@ -117,12 +125,11 @@ const SplitPanel: React.FC<PanelProps> = ({ index, panel, items, error }) => {
     else void openEntry(entry);
   };
 
-  const canBack = panel.historyIndex > 0;
-  const canForward = panel.historyIndex < panel.history.length - 1;
-  const navBtn = (enabled: boolean) =>
-    `p-1 rounded border border-[var(--border)] bg-[var(--card)] shrink-0 ${
-      enabled ? 'cursor-pointer hover:border-[var(--primary)]' : 'opacity-40 cursor-default'
-    }`;
+  const activePaneTabId = panel.activePaneTabId ?? 'pt-0';
+  const paneTabs = panel.paneTabs?.length
+    ? panel.paneTabs
+    : [{ id: activePaneTabId, path: panel.path }];
+  const tabLabel = (path: string) => path.split(/[\\/]/).filter(Boolean).pop() ?? path;
 
   return (
     <div
@@ -138,36 +145,36 @@ const SplitPanel: React.FC<PanelProps> = ({ index, panel, items, error }) => {
       }`}
     >
       <div
-        className={`px-2 py-1.5 bg-[var(--sidebar)] border-b flex items-center gap-1.5 ${
-          isActive ? 'border-[var(--primary)] shadow-[inset_0_-2px_0_var(--primary)]' : 'border-[var(--border)]'
-        }`}
+        className={`h-0.5 shrink-0 ${isActive ? 'bg-[var(--primary)]' : 'bg-[var(--border)]'}`}
         data-active={isActive}
-      >
-        <button
-          className={navBtn(canBack)}
-          disabled={!canBack}
-          onClick={() => void splitPanelBack(index)}
-          title="Back"
-        >
-          <KenneyIcon name="arrowLeft" size={12} />
-        </button>
-        <button
-          className={navBtn(canForward)}
-          disabled={!canForward}
-          onClick={() => void splitPanelForward(index)}
-          title="Forward"
-        >
-          <KenneyIcon name="arrowRight" size={12} />
-        </button>
-        <button className={navBtn(true)} onClick={() => void splitPanelUp(index)} title="Up one level">
-          <KenneyIcon name="arrowUp" size={12} />
-        </button>
-        <span
-          className="font-mono text-xs font-semibold text-[var(--foreground)]/85 truncate ml-1"
-          title={panel.path}
-        >
-          {panel.path}
-        </span>
+      />
+
+      <TabStrip
+        items={paneTabs.map((t) => {
+          const path = t.id === activePaneTabId ? panel.path : t.path;
+          return { id: t.id, title: tabLabel(path), path };
+        })}
+        activeId={activePaneTabId}
+        onSelect={(id) => void switchSplitPaneTab(index, id)}
+        onClose={(id) => void closeSplitPaneTab(index, id)}
+        onAdd={() => void addSplitPaneTab(index)}
+        onReorder={(from, to) => reorderSplitPaneTabs(index, from, to)}
+        onFilesDropped={refreshPanels}
+        dragKey={`pane-${index}`}
+      />
+
+      {/* One horizontal scroller for header + rows; its scrollbar sits along the bottom. */}
+      <div className="flex-1 min-h-0 overflow-x-auto overflow-y-hidden">
+      <div className="h-full flex flex-col" style={{ minWidth: contentMinWidth }}>
+      {/* Same gutter rule as the list below so header and row columns line up. */}
+      <div className="shrink-0 overflow-hidden [scrollbar-gutter:stable]">
+        <FileColumnHeader
+          sortBy={sortBy}
+          sortAsc={sortAsc}
+          onSort={(field) => setSplitPanelSort(index, field)}
+          className="px-3"
+          nameMinWidth="min-w-[80px]"
+        />
       </div>
 
       {error ? (
@@ -175,7 +182,7 @@ const SplitPanel: React.FC<PanelProps> = ({ index, panel, items, error }) => {
       ) : (
         <div
           ref={scrollRef}
-          className="flex-1 overflow-y-auto text-xs"
+          className="flex-1 overflow-y-auto overflow-x-hidden [scrollbar-gutter:stable] text-xs"
           onClick={(e) => {
             if (e.target === e.currentTarget) setSplitPanelSelection(index, []);
           }}
@@ -202,6 +209,11 @@ const SplitPanel: React.FC<PanelProps> = ({ index, panel, items, error }) => {
                     })
                   }
                   onDoubleClick={() => openItem(f)}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    openSplitPanelContextMenu(index, e.clientX, e.clientY, f);
+                  }}
                   style={{
                     position: 'absolute',
                     top: 0,
@@ -210,32 +222,35 @@ const SplitPanel: React.FC<PanelProps> = ({ index, panel, items, error }) => {
                     height: ROW_HEIGHT,
                     transform: `translateY(${vr.start}px)`,
                   }}
-                  className={`px-3 flex items-center gap-2 cursor-pointer ${
+                  className={`px-3 flex items-center cursor-pointer ${
                     dropTarget
                       ? 'bg-sky-500/20 ring-1 ring-inset ring-sky-400'
                       : selected
-                        ? 'bg-white/[0.12] text-[var(--foreground)] ring-1 ring-inset ring-slate-400/40 dark:ring-white/[0.22]'
+                        ? 'bg-[var(--foreground)]/[0.12] text-[var(--foreground)] ring-1 ring-inset ring-[var(--border)]'
                         : f.isDirectory
-                          ? 'bg-white/[0.02] hover:bg-white/[0.05]'
-                          : 'hover:bg-white/[0.035]'
+                          ? 'bg-[var(--foreground)]/[0.02] hover:bg-[var(--foreground)]/[0.05]'
+                          : 'hover:bg-[var(--foreground)]/[0.035]'
                   } ${isCut(f.path) ? 'opacity-50' : ''}`}
                 >
-                  <FileThumbnail entry={f} size={18} />
-                  <span className={`flex-1 truncate ${f.isDirectory ? 'text-[var(--foreground)]/85' : ''}`}>
-                    {f.name}
-                  </span>
-                  <span className="text-[var(--muted-foreground)] shrink-0 w-14 text-right">
-                    {formatRelativeTime(f.modifiedMs)}
-                  </span>
-                  <span className="font-mono text-[var(--muted-foreground)] shrink-0 w-20 text-right">
-                    {formatBytes(f.sizeBytes, f.isDirectory)}
-                  </span>
+                  <div
+                    style={nameWidth ? { width: nameWidth } : undefined}
+                    className={`${nameWidth ? 'shrink-0' : 'flex-1'} min-w-[80px] flex items-center gap-2 pr-2`}
+                  >
+                    <FileThumbnail entry={f} size={18} />
+                    <InlineRenameName
+                      entry={f}
+                      className={`truncate ${f.isDirectory ? 'text-[var(--foreground)]/85' : 'text-[var(--foreground)]'}`}
+                    />
+                  </div>
+                  <FileColumnCells entry={f} />
                 </div>
               );
             })}
           </div>
         </div>
       )}
+      </div>
+      </div>
     </div>
   );
 };

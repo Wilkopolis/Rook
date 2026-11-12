@@ -1,16 +1,27 @@
-export type LayoutMode = 'workspace' | 'thumbnails' | 'miller' | 'dualpane' | 'split' | 'faceted' | 'command';
+/** Per-folder view modes. Split view is not one of them: it is a global display setting. */
+export type FolderLayout = 'workspace' | 'thumbnails' | 'command';
+/**
+ * A folder view, or 'split' for split view. Used where a saved snapshot records the whole
+ * display (workflows) and for older saved data; the live store keeps the two apart.
+ */
+export type LayoutMode = FolderLayout | 'split';
 
-export type SortField = 'name' | 'modified' | 'size' | 'extension';
+export type SortField = 'name' | 'modified' | 'created' | 'size' | 'extension';
 
 /** View style the user picked for one folder. */
 export interface FolderViewStyle {
-  /** Display type. Absent when the user only changed the sort for this folder. */
-  layout?: LayoutMode;
+  /**
+   * Folder view. Absent when the user only changed the sort for this folder. Never split view:
+   * that is a global display setting, not remembered per folder.
+   */
+  layout?: FolderLayout;
   /** Thumbnail tile size in px, recorded for the thumbnails layout. */
   thumbSize?: number;
   /** Sort order the user picked for this folder. */
   sortBy?: SortField;
   sortAsc?: boolean;
+  /** Detail-view columns (visibility and widths) the user set for this folder. */
+  columns?: { visible: Record<string, boolean>; widths: Record<string, number> };
 }
 
 export interface FsEntry {
@@ -19,6 +30,8 @@ export interface FsEntry {
   isDirectory: boolean;
   sizeBytes: number;
   modifiedMs: number;
+  /** Creation time (Unix ms). Absent for sources that don't report it (e.g. SFTP). */
+  createdMs?: number;
   extension: string;
   gitStatus?: string;
   tags?: string[];
@@ -64,6 +77,13 @@ export interface ThumbCacheStats {
   cacheDir?: string;
 }
 
+/** Result of the desktop host's `startDrag` action (native OS drag-out). */
+export interface StartDragResult {
+  ok: boolean;
+  started: boolean;
+  count: number;
+}
+
 export interface FolderSizeStats {
   folderCount: number;
   dbBytes: number;
@@ -90,6 +110,22 @@ export interface SplitPanelState {
   historyIndex: number;
   selectedPath: string | null;
   selectedPaths: string[];
+  /**
+   * This pane's own tab strip. The active tab's live state is mirrored in the fields above;
+   * inactive tabs hold saved snapshots. Created on demand (absent = a single implicit tab).
+   */
+  paneTabs?: SplitPaneTab[];
+  activePaneTabId?: string;
+}
+
+/** Saved folder/history/selection of one tab inside a split pane. */
+export interface SplitPaneTab {
+  id: string;
+  path: string;
+  history: string[];
+  historyIndex: number;
+  selectedPath: string | null;
+  selectedPaths: string[];
 }
 
 export type SplitPanelIndex = 0 | 1;
@@ -102,8 +138,13 @@ export interface PinnedWorkspace {
   iconColor?: string;
   tabs: ExplorerTab[];
   activeTabId: string;
-  layout: LayoutMode;
-  rightPanePath?: string;
+  /** Folder view of the main view. Older saved workflows may say 'split'; they are migrated on load. */
+  layout: FolderLayout;
+  /**
+   * Whether split view was on. Each tab's `splitPanels` (folders, history and pane tabs of the
+   * left and right panels) is saved with the tab, so the panel layout comes back as it was.
+   */
+  splitView?: boolean;
   sortBy?: SortField;
   sortAsc?: boolean;
   showInspector?: boolean;

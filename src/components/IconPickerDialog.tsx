@@ -86,12 +86,12 @@ export const IconPickerDialog: React.FC<Props> = ({ title, initialIcon, initialC
     >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-2xl rounded-xl bg-[#161922] border border-[var(--border)] shadow-2xl p-4 space-y-3.5 text-xs"
+            className="w-full max-w-2xl rounded-xl bg-[var(--card)] border border-[var(--border)] shadow-2xl p-4 space-y-3.5 text-xs"
           >
             {/* Header + Live Preview */}
             <div className="flex items-center justify-between border-b border-[var(--border)] pb-3">
               <div className="flex items-center gap-3 min-w-0">
-                <div className="w-10 h-10 rounded-lg bg-[var(--card)] border border-[var(--border)] flex items-center justify-center shrink-0 shadow-xs">
+                <div className="w-10 h-10 rounded-lg bg-[var(--background)] border border-[var(--border)] flex items-center justify-center shrink-0 shadow-xs">
                   <KenneyIcon name={selectedIcon} size={22} color={selectedColor} />
                 </div>
                 <div className="min-w-0">
@@ -103,7 +103,7 @@ export const IconPickerDialog: React.FC<Props> = ({ title, initialIcon, initialC
                     <span className="text-[var(--foreground)] font-medium">
                       {activeIconItem?.label || selectedIcon}
                     </span>
-                    <span className="px-1.5 py-px rounded bg-white/[0.06] text-[9px] font-mono text-[var(--muted-foreground)]">
+                    <span className="px-1.5 py-px rounded bg-[var(--foreground)]/10 text-[9px] font-mono text-[var(--muted-foreground)]">
                       {selectedIcon}
                     </span>
                   </div>
@@ -112,7 +112,7 @@ export const IconPickerDialog: React.FC<Props> = ({ title, initialIcon, initialC
               <button
                 type="button"
                 onClick={() => onClose()}
-                className="w-7 h-7 rounded-md hover:bg-white/[0.08] flex items-center justify-center text-[var(--muted-foreground)] hover:text-[var(--foreground)] cursor-pointer transition-colors"
+                className="w-7 h-7 rounded-md hover:bg-[var(--foreground)]/10 flex items-center justify-center text-[var(--muted-foreground)] hover:text-[var(--foreground)] cursor-pointer transition-colors"
               >
                 <KenneyIcon name="cross" size={13} />
               </button>
@@ -125,7 +125,7 @@ export const IconPickerDialog: React.FC<Props> = ({ title, initialIcon, initialC
                   Select Icon ({filteredIcons.length} available)
                 </span>
                 {iconSearchQuery && (
-                  <span className="text-[10px] text-sky-400 font-mono">
+                  <span className="text-[10px] text-[var(--primary-text)] font-mono">
                     Filtered by &ldquo;{iconSearchQuery}&rdquo;
                   </span>
                 )}
@@ -147,7 +147,7 @@ export const IconPickerDialog: React.FC<Props> = ({ title, initialIcon, initialC
                   <button
                     type="button"
                     onClick={() => setIconSearchQuery('')}
-                    className="absolute right-2 text-[var(--muted-foreground)] hover:text-[var(--foreground)] cursor-pointer p-0.5 rounded hover:bg-white/[0.08]"
+                    className="absolute right-2 text-[var(--muted-foreground)] hover:text-[var(--foreground)] cursor-pointer p-0.5 rounded hover:bg-[var(--foreground)]/10"
                   >
                     <KenneyIcon name="cross" size={10} />
                   </button>
@@ -166,7 +166,7 @@ export const IconPickerDialog: React.FC<Props> = ({ title, initialIcon, initialC
                       className={`px-2.5 py-1 rounded-md text-[10px] font-medium whitespace-nowrap cursor-pointer transition-all flex items-center gap-1.5 shrink-0 ${
                         active
                           ? 'bg-sky-500 text-white shadow-xs font-semibold'
-                          : 'bg-white/[0.04] text-[var(--muted-foreground)] hover:bg-white/[0.08] hover:text-[var(--foreground)]'
+                          : 'bg-[var(--foreground)]/5 text-[var(--muted-foreground)] hover:bg-[var(--foreground)]/10 hover:text-[var(--foreground)]'
                       }`}
                     >
                       <KenneyIcon name={cat.icon} size={11} />
@@ -210,10 +210,10 @@ export const IconPickerDialog: React.FC<Props> = ({ title, initialIcon, initialC
                                 className={`shrink-0 rounded-md flex items-center justify-center cursor-pointer transition-all ${
                                   active
                                     ? 'bg-sky-500/25 ring-2 ring-sky-400'
-                                    : 'hover:bg-[var(--card)] opacity-80 hover:opacity-100'
+                                    : 'hover:bg-[var(--foreground)]/10 opacity-80 hover:opacity-100'
                                 }`}
                               >
-                                <KenneyIcon name={item.id} size={28} color={active ? selectedColor : '#cbd5e1'} />
+                                <KenneyIcon name={item.id} size={28} color={active ? selectedColor : 'var(--muted-foreground)'} />
                               </button>
                             );
                           })}
@@ -231,7 +231,7 @@ export const IconPickerDialog: React.FC<Props> = ({ title, initialIcon, initialC
                         setIconSearchQuery('');
                         setSelectedCategory('all');
                       }}
-                      className="text-sky-400 hover:underline cursor-pointer text-[11px]"
+                      className="text-[var(--primary-text)] hover:underline cursor-pointer text-[11px]"
                     >
                       Reset filters
                     </button>
@@ -266,7 +266,7 @@ export const IconPickerDialog: React.FC<Props> = ({ title, initialIcon, initialC
                       onClick={() => setSelectedColor(hex)}
                       title={hex}
                       className={`h-6 rounded-md cursor-pointer flex items-center justify-center transition-transform ${
-                        active ? 'ring-2 ring-white scale-110 shadow-xs' : 'hover:scale-105 opacity-85 hover:opacity-100'
+                        active ? 'ring-2 ring-[var(--foreground)] scale-110 shadow-xs' : 'hover:scale-105 opacity-85 hover:opacity-100'
                       }`}
                       style={{ backgroundColor: hex }}
                     />

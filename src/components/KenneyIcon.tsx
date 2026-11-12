@@ -32,7 +32,7 @@ const ICON_TINTS: Record<string, string> = {
   file_cpp: 'text-blue-400/90',
   file_sql: 'text-teal-400/90',
   file_csv: 'text-emerald-400/90',
-  file_md: 'text-slate-300',
+  file_md: 'text-[var(--foreground)]',
   file_pdf: 'text-rose-400/90',
   file_image: 'text-purple-400/90',
   film: 'text-pink-400/90',

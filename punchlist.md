@@ -7,8 +7,8 @@
 ## Phase 0: Product Direction & Tech Stack Decisions
 - [x] Draft interactive UI/Layout mockups ([file_explorer_mockups.html](./file_explorer_mockups.html))
 - [x] **Select Primary Layout Paradigm**
-  - [x] Unified **5-Layout Architecture** (`Modern Workspace`, `Miller Columns`, `Dual-Pane Commander`, `Tag/Faceted Canvas`, and `Fuzzy Command-First`)
-  - [x] Top **Navigation & Options Ribbon** to seamlessly switch layouts (`Alt+1`–`Alt+5`), filter/sort, and toggle Inspector/Terminal panes
+  - [x] Layouts: `Modern Workspace`, `Thumbnails`, `Split Panels`, and `Fuzzy Command-First` (Miller Columns, Dual-Pane Commander and Tag/Faceted Canvas were removed)
+  - [x] Top **Navigation & Options Ribbon** to seamlessly switch layouts (`Alt+1`, `Alt+2`, `Alt+5`, `Alt+7`), filter/sort, and toggle Inspector/Terminal panes
 - [x] **Finalize Tech Stack**
   - [x] Desktop shell / runtime: **Tauri v2 + Rust**
   - [x] Frontend UI framework: **React + TypeScript + Tailwind CSS + Vite**
@@ -58,14 +58,6 @@
 - [x] **View Mode 1: Modern Workspace**
   - [x] Collapsible left sidebar (`SidebarPane.tsx`: Quick Access, Drives, Smart Workflows with drag-and-drop reordering for sections and items)
   - [x] Detailed table list view (`LayoutsView.tsx`)
-- [x] **View Mode 2: Miller Columns**
-  - [x] 3-column horizontal cascading browser (Parent, Active Directory, Child/Preview)
-- [x] **View Mode 3: Dual-Pane Commander**
-  - [x] Split left/right panes with independent navigation and sync button (`⇄`)
-  - [x] Center action strip (`➡` Copy to Right, `⇒` Move to Right)
-  - [ ] Directory diff mode (highlight missing/modified files between left and right panes)
-- [x] **View Mode 4: Tag & Faceted Canvas**
-  - [x] Visual card grid with semantic tag filter pills (`#rust`, `#ui`, `#config`, `#docs`, custom tags)
 - [x] **View Mode 5: Fuzzy Command-First**
   - [x] Split instant fuzzy filter & live code/directory preview
 - [x] **Live Inspector & QuickLook (`InspectorPane.tsx`)**

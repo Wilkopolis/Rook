@@ -91,6 +91,7 @@ export const SidebarPane: React.FC = () => {
     sidebarSectionOrder,
     currentPath,
     layout,
+    splitView,
     navigateSidebar,
     togglePinFolder,
     pinQuickAccessFolder,
@@ -224,7 +225,7 @@ export const SidebarPane: React.FC = () => {
           setDraggingSectionId(null);
           setSectionDropTarget(null);
         }}
-        className="flex items-center justify-between px-1.5 mb-1 group/sec-hdr cursor-grab active:cursor-grabbing hover:bg-white/[0.04] rounded py-0.5 transition-colors"
+        className="flex items-center justify-between px-1.5 mb-1 group/sec-hdr cursor-grab active:cursor-grabbing hover:bg-[var(--foreground)]/[0.04] rounded py-0.5 transition-colors"
         title="Quick Access — Drag header to reorder section"
       >
         <div className="flex items-center gap-1 min-w-0">
@@ -414,7 +415,7 @@ export const SidebarPane: React.FC = () => {
                     }}
                     onDoubleClick={(e) => e.stopPropagation()}
                     title="Click to customize icon & color"
-                    className="p-0.5 -ml-0.5 rounded hover:bg-white/[0.08] cursor-pointer flex items-center justify-center shrink-0"
+                    className="p-0.5 -ml-0.5 rounded hover:bg-[var(--foreground)]/[0.08] cursor-pointer flex items-center justify-center shrink-0"
                   >
                     <KenneyIcon
                       name={pin.icon || 'folder'}
@@ -498,7 +499,7 @@ export const SidebarPane: React.FC = () => {
           setDraggingSectionId(null);
           setSectionDropTarget(null);
         }}
-        className="flex items-center gap-1 px-1.5 mb-1 group/sec-hdr cursor-grab active:cursor-grabbing hover:bg-white/[0.04] rounded py-0.5 transition-colors"
+        className="flex items-center gap-1 px-1.5 mb-1 group/sec-hdr cursor-grab active:cursor-grabbing hover:bg-[var(--foreground)]/[0.04] rounded py-0.5 transition-colors"
         title="Drives & Mounts — Drag header to reorder section"
       >
         <GripIcon className="text-[var(--muted-foreground)] opacity-30 group-hover/sec-hdr:opacity-100 transition-opacity" />
@@ -512,7 +513,7 @@ export const SidebarPane: React.FC = () => {
             e.stopPropagation();
             openOptionsTo('network');
           }}
-          className="ml-auto w-4 h-4 rounded flex items-center justify-center text-[var(--muted-foreground)] opacity-0 group-hover/sec-hdr:opacity-100 focus:opacity-100 hover:text-[var(--foreground)] hover:bg-white/[0.08] cursor-pointer transition-opacity"
+          className="ml-auto w-4 h-4 rounded flex items-center justify-center text-[var(--muted-foreground)] opacity-0 group-hover/sec-hdr:opacity-100 focus:opacity-100 hover:text-[var(--foreground)] hover:bg-[var(--foreground)]/[0.08] cursor-pointer transition-opacity"
           title="Add SSH host"
           aria-label="Add SSH host"
         >
@@ -693,7 +694,7 @@ export const SidebarPane: React.FC = () => {
           setDraggingSectionId(null);
           setSectionDropTarget(null);
         }}
-        className="flex items-center justify-between px-1.5 mb-1 group/sec-hdr cursor-grab active:cursor-grabbing hover:bg-white/[0.04] rounded py-0.5 transition-colors"
+        className="flex items-center justify-between px-1.5 mb-1 group/sec-hdr cursor-grab active:cursor-grabbing hover:bg-[var(--foreground)]/[0.04] rounded py-0.5 transition-colors"
         title="Workflows — Drag header to reorder section"
       >
         <div className="flex items-center gap-1 min-w-0">
@@ -720,23 +721,22 @@ export const SidebarPane: React.FC = () => {
       <div className="space-y-px min-h-[4px]">
         {workflows.map((wf) => {
           const tabCount = wf.tabs?.length || 1;
+          const wfSplit = wf.splitView ?? false;
           const layoutShort =
-            wf.layout === 'miller'
-              ? 'Tree'
-              : wf.layout === 'dualpane'
-                ? 'Split'
-                : wf.layout === 'faceted'
-                  ? 'Tags'
-                  : wf.layout === 'command'
-                    ? 'Fuzzy'
-                    : 'Workspace';
+            wfSplit
+              ? 'Split'
+              : wf.layout === 'command'
+                ? 'Fuzzy'
+                : wf.layout === 'thumbnails'
+                  ? 'Thumbnails'
+                  : 'Workspace';
           const tooltipTabs =
             tabCount > 1
               ? `\nTabs (${tabCount}): ${wf.tabs.map((t) => t.title).join(', ')}`
               : '';
 
           const isEditing = editing?.kind === 'workflow' && editing.id === wf.id;
-          const isActive = layout === wf.layout && currentPath.toLowerCase() === wf.path.toLowerCase();
+          const isActive = splitView === wfSplit && (wfSplit || layout === wf.layout) &&currentPath.toLowerCase() === wf.path.toLowerCase();
           const isDraggingThis = draggingWorkflowId === wf.id;
           const isDropTargetBefore =
             workflowDropTarget?.id === wf.id && workflowDropTarget.position === 'before';
@@ -821,7 +821,7 @@ export const SidebarPane: React.FC = () => {
                   setEditing({ kind: 'workflow', id: wf.id });
                   setEditingLabel(wf.label);
                 }}
-                title={`${wf.label}\nRoot: ${wf.path}\nLayout: ${wf.layout || 'workspace'}${tooltipTabs}\nClick to load workflow (folders & layout)\nDouble-click to rename\nDrag to reorder`}
+                title={`${wf.label}\nRoot: ${wf.path}\nLayout: ${wf.layout || 'workspace'}${wfSplit ? ' + split view' : ''}${tooltipTabs}\nClick to load workflow (folders & layout)\nDouble-click to rename\nDrag to reorder`}
                 className={`group px-2 py-1 rounded cursor-pointer flex items-center justify-between gap-1 transition-colors ${
                   isDraggingThis
                     ? 'opacity-30'
@@ -857,7 +857,7 @@ export const SidebarPane: React.FC = () => {
                     }}
                     onDoubleClick={(e) => e.stopPropagation()}
                     title="Click to customize workflow icon & color"
-                    className="p-0.5 -ml-0.5 rounded hover:bg-white/[0.08] cursor-pointer flex items-center justify-center shrink-0"
+                    className="p-0.5 -ml-0.5 rounded hover:bg-[var(--foreground)]/[0.08] cursor-pointer flex items-center justify-center shrink-0"
                   >
                     <KenneyIcon
                       name={wf.icon || 'crown'}
@@ -897,7 +897,7 @@ export const SidebarPane: React.FC = () => {
                 </span>
                 <span className="flex items-center gap-1 shrink-0">
                   {layoutShort && (
-                    <span className="px-1 py-px rounded bg-white/[0.06] text-[9px] font-mono text-[var(--muted-foreground)]">
+                    <span className="px-1 py-px rounded bg-[var(--foreground)]/[0.06] text-[9px] font-mono text-[var(--muted-foreground)]">
                       {layoutShort}
                     </span>
                   )}

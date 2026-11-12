@@ -52,7 +52,7 @@ const ConflictDialogBody: React.FC<{ prompt: ConflictPrompt }> = ({ prompt }) =>
   }, [resolve]);
 
   const button =
-    'px-3 py-1.5 rounded-md border border-[var(--border)] text-[var(--foreground)] hover:bg-white/[0.06] cursor-pointer transition-colors';
+    'px-3 py-1.5 rounded-md border border-[var(--border)] text-[var(--foreground)] hover:bg-[var(--foreground)]/[0.06] cursor-pointer transition-colors';
 
   return (
     <div className="fixed inset-0 bg-black/60 z-[1100] flex items-center justify-center p-4">
